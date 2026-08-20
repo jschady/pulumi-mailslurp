@@ -1,0 +1,22 @@
+name: mailslurp-upgrade
+runtime: yaml
+description: The program a released provider deploys before this build previews the same stack.
+
+# The provider reads the API key from MAILSLURP_API_KEY, so this program carries none. An email
+# template holds no secret and no dynamically typed property, and it creates no billed inbox.
+config:
+  templateName:
+    type: string
+
+resources:
+  exampleTemplate:
+    type: mailslurp:index:EmailTemplate
+    properties:
+      name: ${templateName}
+      content: |
+        Hello {{firstName}},
+        Your inbox {{inboxAddress}} is ready.
+
+outputs:
+  templateId: ${exampleTemplate.id}
+  templateVariables: ${exampleTemplate.variables}

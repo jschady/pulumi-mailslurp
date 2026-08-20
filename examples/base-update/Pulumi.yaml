@@ -1,0 +1,54 @@
+name: mailslurp-base
+runtime: yaml
+description: The resources of the MailSlurp provider that attach to an inbox you already have.
+
+# The provider reads the API key from MAILSLURP_API_KEY, so this program carries none.
+config:
+  inboxId:
+    type: string
+  webhookName:
+    type: string
+  webhookUrl:
+    type: string
+  rulesetTarget:
+    type: string
+  templateName:
+    type: string
+
+resources:
+  exampleWebhook:
+    type: mailslurp:index:Webhook
+    properties:
+      name: ${webhookName}
+      inboxId: ${inboxId}
+      url: ${webhookUrl}
+      eventName: NEW_EMAIL
+
+  exampleRuleset:
+    type: mailslurp:index:InboxRuleset
+    properties:
+      inboxId: ${inboxId}
+      scope: RECEIVING_EMAILS
+      action: BLOCK
+      target: ${rulesetTarget}
+
+  exampleTemplate:
+    type: mailslurp:index:EmailTemplate
+    properties:
+      name: ${templateName}
+      content: |
+        Hello {{firstName}},
+        Your inbox {{inboxAddress}} is ready. Reply to {{replyTo}}.
+
+variables:
+  readInbox:
+    fn::invoke:
+      function: mailslurp:index:getInbox
+      arguments:
+        inboxId: ${inboxId}
+
+outputs:
+  emailAddress: ${readInbox.emailAddress}
+  webhookId: ${exampleWebhook.id}
+  rulesetId: ${exampleRuleset.id}
+  templateVariables: ${exampleTemplate.variables}

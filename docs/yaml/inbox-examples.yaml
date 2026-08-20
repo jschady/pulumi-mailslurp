@@ -1,0 +1,31 @@
+name: mailslurp-inbox
+description: An inbox that receives email at an address MailSlurp assigns
+runtime: yaml
+resources:
+  team-inbox:
+    type: mailslurp:index:Inbox
+    properties:
+      name: team-inbox
+      description: The shared inbox of the team
+      inboxType: HTTP_INBOX
+      tags:
+        - pulumi
+        - team
+outputs:
+  emailAddress: ${team-inbox.emailAddress}
+---
+name: mailslurp-virtual-inbox
+description: A virtual inbox that holds every test email inside MailSlurp
+runtime: yaml
+resources:
+  test-inbox:
+    type: mailslurp:index:Inbox
+    properties:
+      name: test-inbox
+      description: The inbox that the acceptance tests read
+      virtualInbox: true
+      expiresIn: 3600000
+      tags:
+        - test
+outputs:
+  emailAddress: ${test-inbox.emailAddress}

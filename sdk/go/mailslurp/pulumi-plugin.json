@@ -1,0 +1,5 @@
+{
+  "resource": true,
+  "name": "mailslurp",
+  "server": "github://api.github.com/jschady/pulumi-mailslurp"
+}

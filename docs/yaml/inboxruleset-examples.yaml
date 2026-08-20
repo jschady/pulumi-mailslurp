@@ -1,0 +1,17 @@
+name: mailslurp-inbox-ruleset
+description: A ruleset that blocks the email of one domain
+runtime: yaml
+resources:
+  support-inbox:
+    type: mailslurp:index:Inbox
+    properties:
+      name: support-inbox
+  block-one-domain:
+    type: mailslurp:index:InboxRuleset
+    properties:
+      inboxId: ${support-inbox.id}
+      scope: RECEIVING_EMAILS
+      action: BLOCK
+      target: "*@blocked.example.com"
+outputs:
+  rulesetId: ${block-one-domain.id}
