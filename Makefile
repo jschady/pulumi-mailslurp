@@ -111,6 +111,7 @@ generate_python:
 generate_dotnet:
 	$(call gen_sdk,dotnet)
 	cp docs/logo.png sdk/dotnet/logo.png
+	cp README.md sdk/dotnet/README.md
 
 .PHONY: generate_go
 generate_go:
