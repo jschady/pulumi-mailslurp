@@ -97,9 +97,13 @@ SDK_PULUMI_VERSION = $(shell go list -m -f '{{.Version}}' github.com/pulumi/pulu
 generate_nodejs:
 	$(call gen_sdk,nodejs)
 
+# The generator still writes the license as a TOML table, which setuptools deprecated in favor
+# of an SPDX string (removal 2027-02, string form needs setuptools>=77). Collapse it after
+# generation. https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license
 .PHONY: generate_python
 generate_python:
 	$(call gen_sdk,python)
+	perl -0pi -e 's/\[project\.license\]\n\s*text = ("[^"]+")/license = $$1/; s/"setuptools>=61\.0"/"setuptools>=77.0.0"/' sdk/python/pyproject.toml
 
 # The .NET generator downloads the schema's logo URL and writes the response body to logo.png,
 # whatever it is. https://github.com/pulumi/pulumi/issues/13589
