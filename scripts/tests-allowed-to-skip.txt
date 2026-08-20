@@ -5,3 +5,7 @@
 # no suite can write. The getDomain legs read the domains the account holds, so they skip.
 TestGetDomainReadsTheDomainsTheAccountAlreadyHolds
 TestGetDomainAcceptsCheckForErrorsAgainstALiveDomain
+
+# The account plan carries no inbox forwarder: the create answers W_429_SUBSCRIPTION_LIMIT_REACHED
+# on the free plan. The lifecycle skips on that one refusal code and fails on every other error.
+TestInboxForwarderLifeCycle
