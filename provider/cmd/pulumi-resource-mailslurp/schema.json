@@ -26,6 +26,7 @@
       "respectSchemaVersion": true
     },
     "nodejs": {
+      "packageDescription": "A Pulumi provider that creates and manages MailSlurp email infrastructure.",
       "packageName": "pulumi-mailslurp",
       "respectSchemaVersion": true
     },

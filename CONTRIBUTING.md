@@ -1,8 +1,15 @@
 # How to work on this repository
 
 This repository holds a Pulumi provider that calls the MailSlurp REST API. The provider is native:
-it wraps no other provider, and it generates its schema from the Go code. The resources live in
-`provider/internal/`, and the two registry pages live in `docs/`.
+it wraps no other provider, and it generates its schema from the Go code.
+
+| Directory | What it holds |
+| --- | --- |
+| `provider/` | the provider, the resources, and the API client |
+| `provider/cmd/pulumi-resource-mailslurp/` | the plugin binary and the committed schema |
+| `docs/` | the registry pages, the logo, and the example sources |
+| `api/openapi.json` | the pinned copy of the MailSlurp API specification |
+| `scripts/` | the checks that the lint job runs |
 
 ## The tools
 

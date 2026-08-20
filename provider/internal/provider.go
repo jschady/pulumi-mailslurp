@@ -15,7 +15,10 @@ const respectSchemaVersion = "respectSchemaVersion"
 func languageMap() map[string]any {
 	return map[string]any{
 		"nodejs": map[string]any{
-			"packageName":        "pulumi-mailslurp",
+			"packageName": "pulumi-mailslurp",
+			// The generator writes package.json without a description unless this key
+			// carries one, and npm then shows the head of the README in its place.
+			"packageDescription": "A Pulumi provider that creates and manages MailSlurp email infrastructure.",
 			respectSchemaVersion: true,
 		},
 		"go": map[string]any{

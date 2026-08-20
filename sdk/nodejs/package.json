@@ -1,6 +1,7 @@
 {
     "name": "pulumi-mailslurp",
     "version": "${VERSION}",
+    "description": "A Pulumi provider that creates and manages MailSlurp email infrastructure.",
     "keywords": [
         "pulumi",
         "mailslurp",
