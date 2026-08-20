@@ -18,6 +18,7 @@ import (
 	"github.com/pulumi/providertest/pulumitest"
 	"github.com/pulumi/providertest/pulumitest/assertpreview"
 	"github.com/pulumi/providertest/pulumitest/opttest"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	rpc "github.com/pulumi/pulumi/sdk/v3/proto/go"
 
 	"github.com/jschady/pulumi-mailslurp/provider"
@@ -54,7 +55,7 @@ func TestUpgradeFromTheReleasedProvider(t *testing.T) {
 	templateName := newTestName(templateKind)
 	t.Cleanup(func() { sweepLeg(t, key, map[string]string{templateClass: templateName}) })
 
-	installBaselinePlugin(t, baseline)
+	baselineDir := installBaselinePlugin(t, baseline)
 
 	// The harness calls SanitizeSecrets on the gRPC log unconditionally, and that call panics
 	// when the log is off, so this stack cannot turn the log off the way every other leg does.
@@ -64,14 +65,19 @@ func TestUpgradeFromTheReleasedProvider(t *testing.T) {
 	)
 	pt.SetConfig(t, "templateName", templateName)
 
+	// The harness would otherwise run a plain `pulumi plugin install`, and the CLI resolves that
+	// name against a registry that holds no community package. The path hands it the plugin the
+	// install above downloaded.
 	preview := providertest.PreviewProviderUpgrade(t, pt, provider.Name, baseline,
-		optproviderupgrade.CacheDir(upgradeCacheDir(t)))
+		optproviderupgrade.CacheDir(upgradeCacheDir(t)),
+		optproviderupgrade.BaselineOpts(opttest.AttachProviderBinary(provider.Name, baselineDir)))
 	assertpreview.HasNoChanges(t, preview)
 }
 
-// installBaselinePlugin downloads the released provider. The harness runs a plain `pulumi plugin
-// install`, which reads a registry holding no community plugin, so the server is named here first.
-func installBaselinePlugin(t *testing.T, baseline string) {
+// installBaselinePlugin downloads the released provider and answers the directory it lands in.
+// The download names the server the committed schema advertises, because a plain install reads
+// a registry that holds no community plugin, and the caller hands the path to the harness.
+func installBaselinePlugin(t *testing.T, baseline string) string {
 	t.Helper()
 	//nolint:gosec // G204: the arguments are a constant, a repository variable, and the server
 	// the committed schema advertises. Each reaches the CLI as one argument.
@@ -79,6 +85,13 @@ func installBaselinePlugin(t *testing.T, baseline string) {
 		"--server", pluginDownloadURL(t, schemaPath))
 	answered, err := command.CombinedOutput()
 	require.NoErrorf(t, err, "install the %s baseline plugin: %s", baseline, answered)
+
+	pluginDir, err := workspace.GetPluginDir()
+	require.NoError(t, err, "read the plugin directory")
+	installed := filepath.Join(pluginDir, "resource-"+provider.Name+"-v"+baseline)
+	_, err = os.Stat(installed)
+	require.NoErrorf(t, err, "the install left no plugin at %s", installed)
+	return installed
 }
 
 // pluginDownloadURL reads the server a schema advertises. The committed schema is what every

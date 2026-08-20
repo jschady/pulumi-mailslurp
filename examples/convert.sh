@@ -39,7 +39,7 @@ convert_into() {
 	diagnostics="$(printf '%s' "$diagnostics" | sed -E "s/$(printf '\033')\[[0-9;]*m//g")"
 	[ -z "$diagnostics" ] || printf '%s\n' "$diagnostics" >&2
 	[ "$status" -eq 0 ] || refuse "The conversion to $language failed with the status $status."
-	if printf '%s' "$diagnostics" | grep -q 'Error:'; then
+	if printf '%s' "$diagnostics" | grep 'Error:' >/dev/null; then
 		refuse "The conversion to $language reported an error, printed above."
 	fi
 }
