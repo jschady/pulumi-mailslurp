@@ -192,9 +192,17 @@ test_integration:
 	$(GOTEST) -race -count=1 -tags=integration -timeout 30m \
 		-skip TestGeneratingTheSDKsLeavesTheTreeClean ./provider/...
 
+# The YAML program legs and pulumi convert read their plugins from the Pulumi home: ambient
+# discovery and automatic acquisition are off, so only an installed plugin resolves. The provider
+# binary comes from bin/, built by the provider target or unpacked from the build artifact in CI.
+.PHONY: install_plugins
+install_plugins:
+	$(PULUMI) plugin install resource $(PACK) $(VERSION_GENERIC) --file bin/$(PROVIDER) --reinstall
+	$(PULUMI) plugin install converter yaml $(YAML_CONVERTER_VERSION)
+
 # A cached pass of a live run reads exactly like a fresh one, so the count switch forbids the cache.
 .PHONY: test_examples
-test_examples:
+test_examples: install_plugins
 	$(GOTEST) -count=1 -v -tags=all -timeout 2h -parallel $(TESTPARALLELISM) ./examples/...
 
 # go vet builds the test package without running it, so no TestMain reaches the API here.
@@ -223,12 +231,9 @@ compile_dotnet_example:
 compile_go_example:
 	cd examples/go && go build -o /dev/null ./...
 
-# pulumi convert reads the provider plugin, so the recipe installs the binary it just built
-# instead of leaving the CLI to find one. Ambient discovery is off, so nothing else resolves it.
 .PHONY: examples
 examples: provider
-	$(PULUMI) plugin install resource $(PACK) $(VERSION_GENERIC) --file bin/$(PROVIDER) --reinstall
-	$(PULUMI) plugin install converter yaml $(YAML_CONVERTER_VERSION)
+	$(MAKE) install_plugins
 	$(MAKE) examples/nodejs examples/python examples/dotnet examples/go
 
 .PHONY: examples/nodejs
@@ -247,12 +252,9 @@ examples/dotnet:
 examples/go:
 	./examples/convert.sh go
 
-# pulumi convert reads the provider plugin, so the docs target installs the binary it just built
-# instead of leaving the CLI to find one. Ambient discovery is off, so nothing else resolves it.
 .PHONY: docs
 docs: provider
-	$(PULUMI) plugin install resource $(PACK) $(VERSION_GENERIC) --file bin/$(PROVIDER) --reinstall
-	$(PULUMI) plugin install converter yaml $(YAML_CONVERTER_VERSION)
+	$(MAKE) install_plugins
 	go generate docs/generate.go
 
 .PHONY: release_snapshot
