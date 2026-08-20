@@ -1,5 +1,0 @@
-**/bin/
-**/obj/
-node_modules/
-venv/
-__pycache__/
