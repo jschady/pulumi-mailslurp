@@ -302,12 +302,19 @@ jobs:
         uses: pypa/gh-action-pypi-publish@v1.14.2
         with:
           packages-dir: sdk/python/bin/dist
+      # The exchange answers a key that lives one hour, so it runs right before the push.
+      - name: Exchange the workflow identity for a NuGet API key
+        id: nuget_login
+        uses: NuGet/login@v1.2.0
+        with:
+          user: jschady
+      # A find -exec ';' reports success whatever the push answers, so the push names its file.
       - name: Publish the dotnet SDK to NuGet
         env:
-          NUGET_PUBLISH_KEY: ${{ secrets.NUGET_PUBLISH_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
         run: |
-          find sdk/dotnet/bin/Debug -name '*.nupkg' -exec \
-            dotnet nuget push -k "$NUGET_PUBLISH_KEY" -s https://api.nuget.org/v3/index.json {} ';'
+          dotnet nuget push "sdk/dotnet/bin/Debug/*.nupkg" -k "$NUGET_API_KEY" \
+            -s https://api.nuget.org/v3/index.json
 
   publish_go_sdk:
     name: publish_go_sdk
