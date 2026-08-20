@@ -67,7 +67,7 @@ for f in $WORKFLOWS; do
 done
 # This script was dead wiring once. The lint job must keep calling it.
 for f in pull-request.yml main.yml; do
-	uncommented <"$WF/$f" 2>/dev/null | grep -q './.github/workflows/check-workflows.sh'
+	uncommented <"$WF/$f" 2>/dev/null | grep './.github/workflows/check-workflows.sh' >/dev/null
 	check "$f calls check-workflows.sh from the lint job" $?
 done
 if [ "$fails" -gt 0 ]; then
@@ -297,7 +297,7 @@ check "scripts/check-tests-ran.sh exists and runs" $?
 grep -q 'tags=integration -list' "$WF/pull-request.yml"
 check "pull-request.yml lists the tests the integration tag adds" $?
 for f in pull-request.yml main.yml acceptance-tests.yml; do
-	uncommented <"$WF/$f" 2>/dev/null | grep -q 'scripts/check-tests-ran.sh'
+	uncommented <"$WF/$f" 2>/dev/null | grep 'scripts/check-tests-ran.sh' >/dev/null
 	check "$f runs the gate after the credentialed tests" $?
 done
 
@@ -335,7 +335,7 @@ INTERNAL="$REPO/scripts/check-internal-references.sh"
 [ -x "$INTERNAL" ]
 check "scripts/check-internal-references.sh exists and runs" $?
 for f in pull-request.yml main.yml; do
-	uncommented <"$WF/$f" 2>/dev/null | grep -q './scripts/check-internal-references.sh'
+	uncommented <"$WF/$f" 2>/dev/null | grep './scripts/check-internal-references.sh' >/dev/null
 	check "$f calls check-internal-references.sh from the lint job" $?
 done
 
