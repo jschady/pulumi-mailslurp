@@ -82,7 +82,7 @@ used="$(grep -hoE 'uses: *[^ ]+' "${WORKFLOW_PATHS[@]}" | awk '{print $2}' | sor
 [ -n "$used" ]
 check "the workflows carry at least one uses: line" $?
 for u in $used; do
-	if printf '%s\n' "$PINS" | grep -qxF "$u"; then
+	if printf '%s\n' "$PINS" | grep -xF "$u" >/dev/null; then
 		pass "pinned action $u"
 	else
 		fail "action $u is not one of the pinned actions"
@@ -279,7 +279,7 @@ if extract_run_block "$WF/spec-drift.yml" 'PINNED_SPEC' >"$drift"; then
 	status=$?
 	[ "$status" -ne 0 ]
 	check "compare block exits non-zero when a path disappears" $?
-	echo "$out" | grep -q '/inboxes'
+	echo "$out" | grep '/inboxes' >/dev/null
 	check "compare block names the path that disappeared" $?
 
 	out="$(cd "$REPO" && PINNED_SPEC=api/openapi.json LIVE_SPEC="$TMP/bumped.json" bash "$drift" 2>&1)"
@@ -347,18 +347,18 @@ for f in pull-request.yml main.yml; do
 	read_lines="$(printf '%s\n' "$body" | grep -c . | tr -d ' ')"
 	[ "$read_lines" -gt 5 ]
 	check "$f: the lint job body read $read_lines lines" $?
-	printf '%s\n' "$body" | grep -qF 'name: Install actionlint'
+	printf '%s\n' "$body" | grep -F 'name: Install actionlint' >/dev/null
 	check "$f: the lint job installs actionlint" $?
-	printf '%s\n' "$body" | grep -qF "actionlint_\${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+	printf '%s\n' "$body" | grep -F "actionlint_\${ACTIONLINT_VERSION}_linux_amd64.tar.gz" >/dev/null
 	check "$f: the install step downloads the pinned release tarball" $?
-	printf '%s\n' "$body" | grep -qF 'sha256sum -c -'
+	printf '%s\n' "$body" | grep -F 'sha256sum -c -' >/dev/null
 	check "$f: the install step verifies the checksum" $?
 	# An install step placed after this script runs would leave the check below skipping.
 	printf '%s\n' "$body" | awk '/Install actionlint/ {i = NR} /check-workflows.sh/ {c = NR} END {exit !(i && c && i < c)}'
 	check "$f: the install step runs before this script" $?
-	printf '%s\n' "$live" | grep -qF "ACTIONLINT_VERSION: $ACTIONLINT_PIN"
+	printf '%s\n' "$live" | grep -F "ACTIONLINT_VERSION: $ACTIONLINT_PIN" >/dev/null
 	check "$f: ACTIONLINT_VERSION is pinned to $ACTIONLINT_PIN" $?
-	printf '%s\n' "$live" | grep -qF "ACTIONLINT_SHA256: $ACTIONLINT_SHA256_PIN"
+	printf '%s\n' "$live" | grep -F "ACTIONLINT_SHA256: $ACTIONLINT_SHA256_PIN" >/dev/null
 	check "$f: ACTIONLINT_SHA256 is pinned to the release digest" $?
 done
 
