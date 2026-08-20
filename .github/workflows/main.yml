@@ -346,6 +346,16 @@ jobs:
           go-version-file: go.mod
       - name: Install pulumictl
         run: go install "github.com/pulumi/pulumictl/cmd/pulumictl@${PULUMICTL_VERSION}"
+      - name: Install actionlint
+        run: |
+          bin="$RUNNER_TEMP/actionlint-bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$bin/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $bin/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$bin/actionlint.tar.gz" -C "$bin" actionlint
+          echo "$bin" >>"$GITHUB_PATH"
+          "$bin/actionlint" --version
       - name: List the tests that the integration tag adds
         run: |
           go test -tags=integration -list '.*' ./provider/... | grep '^Test' | sort >"$RUNNER_TEMP/tagged.txt"

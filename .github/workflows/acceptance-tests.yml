@@ -13,6 +13,8 @@ env:
   PROVIDER: pulumi-resource-mailslurp
   PULUMI_VERSION: 3.258.0
   PULUMICTL_VERSION: v0.0.50
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
   NODE_VERSION: 24.x
   YARN_VERSION: 1.22.22
   PYTHON_VERSION: '3.11'
@@ -111,6 +113,16 @@ jobs:
           "$RUNNER_TEMP/pulumi/pulumi" version | grep -qx "v${PULUMI_VERSION}"
           echo "$RUNNER_TEMP/pulumi" >>"$GITHUB_PATH"
           go install "github.com/pulumi/pulumictl/cmd/pulumictl@${PULUMICTL_VERSION}"
+      - name: Install actionlint
+        run: |
+          bin="$RUNNER_TEMP/actionlint-bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$bin/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $bin/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$bin/actionlint.tar.gz" -C "$bin" actionlint
+          echo "$bin" >>"$GITHUB_PATH"
+          "$bin/actionlint" --version
       - name: Set the provider version
         uses: pulumi/provider-version-action@v2.0.0
         with:
