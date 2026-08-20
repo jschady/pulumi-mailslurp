@@ -1,4 +1,4 @@
-# The workflows
+# Workflows
 
 This directory holds the 6 workflows of this repository. The table below names what each one does.
 Every job runs on `ubuntu-latest`, and no job calls a Pulumi-organization service.
@@ -16,7 +16,7 @@ The `sentinel` job needs every other job in the workflow. It passes when each on
 skip, and it fails on any other result. Branch protection needs one required check, so require
 `sentinel`.
 
-## The job graph
+## Job graph
 
 The `prerequisites` job builds the schema and the provider binary, then uploads the binary as an
 artifact. The `build_sdks` job builds one SDK for each of the 4 languages and uploads each one. It
@@ -28,21 +28,21 @@ PyPI, and NuGet packages, then the Go SDK tag. Each publish job needs the one be
 stops the rest. A push of a `v*.*.*` tag starts `release.yml` alone. The `tags-ignore` list in
 `main.yml` also holds `sdk/**`, so the Go SDK tag starts no build.
 
-## The gate before the binaries publish
+## Gate before the binaries publish
 
 The `confirm_sdks` job restores all 4 SDK artifacts and runs `./scripts/check-sdk-artifacts.sh` over
 them. That script reads the name and the version each staged artifact would publish under. It reads
 4 of them:
 
-- the npm manifest
-- the Python wheel and its source distribution
-- the NuGet package
-- the Go module path
+- npm manifest
+- Python wheel and its source distribution
+- NuGet package
+- Go module path
 
 The `publish_provider` job needs this one, so a release page never carries binaries that no SDK can
 be published against. A path that exists on its own proves nothing, so the names are read instead.
 
-## The 3 jobs that read the examples
+## 3 jobs that read the examples
 
 The `compile_examples` job runs `make compile_examples`, which builds all 4 example programs against
 the SDKs this build generates. It ran a test filter that matched no test before, which builds the
@@ -55,7 +55,7 @@ difference. It then runs the example tests that carry no build tag.
 The `test_examples` job runs `make test_examples`, which is one process carrying every build tag. One
 process for each language paid for a shared inbox each, and the account bills every inbox.
 
-## The lint job
+## Lint job
 
 The `lint` job runs 5 checks, in this order.
 
@@ -72,14 +72,14 @@ The job installs `actionlint` from its GitHub release page and checks the archiv
 the check script fails instead of skipping. A local run without `actionlint` skips that one
 assertion and says so.
 
-## The pinned versions
+## Pinned versions
 
 Every `uses:` line names an exact release tag, and every tool install names an exact version. The
 workflows install the Pulumi CLI from the GitHub release page of `pulumi/pulumi`, and they install
 `pulumictl` and `golangci-lint` with `go install`. The `ACTIONLINT_VERSION` and `ACTIONLINT_SHA256`
 variables pin `actionlint`, and `check-workflows.sh` holds the same 2 values.
 
-## The secrets
+## Secrets
 
 | Secret | Workflow | Use |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ variables pin `actionlint`, and `check-workflows.sh` holds the same 2 values.
 The PyPI publish step needs no secret. PyPI trusts this repository through OpenID Connect, so the job
 asks for the `id-token: write` permission. A human must register the trusted publisher on PyPI once.
 
-## The gate on the API key
+## Gate on the API key
 
 2 jobs spend money: `test_examples` and `integration`. On a pull request both need 2 things: the
 branch comes from this repository, and the pull request carries the `run-live-tests` label.
@@ -99,13 +99,13 @@ branch comes from this repository, and the pull request carries the `run-live-te
 A pull request without the label skips both jobs. A pull request from a fork skips both jobs. Every
 pull request still gets these checks:
 
-- the provider build
-- the lint
-- the unit tests
-- the example compile
-- the example conversion and the example tests that read no API key
+- provider build
+- lint
+- unit tests
+- example compile
+- example conversion and the example tests that read no API key
 
-## The acceptance-test command
+## Acceptance-test command
 
 A fork pull request never gets the API key from `pull-request.yml`. A maintainer starts the
 acceptance tests with a comment instead.
@@ -125,7 +125,7 @@ the changes before you comment.
 The `acceptance_tests` job fails when `MAILSLURP_API_KEY` is empty. A maintainer asked for the run,
 so a suite that skipped itself for a missing key would report a pass nobody earned.
 
-## The integration gate
+## Integration gate
 
 The `test_integration` target exits 0 when no file carries the `integration` build tag. An empty run
 with a green exit code is a false pass, so the `integration` job runs 3 steps:
@@ -138,27 +138,27 @@ with a green exit code is a false pass, so the `integration` job runs 3 steps:
 There is one copy of that script. Every job that runs the credentialed tests calls it, so a fix to
 the comparison reaches each one.
 
-## The coverage profile
+## Coverage profile
 
 The `unit` job runs `make test_provider` with
 `GOTEST='go test -coverprofile=coverage.txt -covermode=atomic'`, then uploads `coverage.txt` as an
 artifact. The `.gitignore` file and the `clean` target already name that file. No external service
 reads the profile.
 
-## The spec drift check
+## Spec drift check
 
 The `spec_diff` job fetches the live MailSlurp spec from `https://api.mailslurp.com/v2/api-docs`. It
 compares the set of `paths` keys with the set in `api/openapi.json`, and it fails when a path appears
 on one side only. The job never compares the version string in the spec. MailSlurp raises that string
 for changes that leave the surface alone, so a version compare reports drift every week.
 
-## The worktree checks
+## Worktree checks
 
 The `prerequisites` job runs `git status --porcelain` after schema generation. The `build_sdks` job
 runs it after each SDK build, and the `examples` job runs it after the conversion. A dirty worktree
 means one of these is stale:
 
-- the committed schema
+- committed schema
 - a committed SDK
 - a converted example program
 

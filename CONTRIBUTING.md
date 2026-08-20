@@ -11,7 +11,7 @@ it wraps no other provider, and it generates its schema from the Go code.
 | `api/openapi.json` | the pinned copy of the MailSlurp API specification |
 | `scripts/` | the checks that the lint job runs |
 
-## The tools
+## Tools
 
 Install these versions. The `.tool-versions` file lists every one of them. The workflows pin most
 of the same values in their setup steps. A few come from other sources, so raise a version here and
@@ -27,13 +27,13 @@ in the workflows together.
 | .NET | 8.0 |
 | jq | 1.7.1 |
 
-## The first build
+## First build
 
 1. Clone the repository.
 2. Run `make provider` to build the plugin binary into `bin/`.
 3. Run `make test_provider` to run the unit tests.
 
-## The generated files
+## Generated files
 
 Two sets of files are generated, and a hand edit of either one goes away on the next run.
 
@@ -46,7 +46,7 @@ To change a resource description, edit the `Annotate` method of that resource, t
 `make generate_schema`. To change an example, edit the source in `docs/yaml/`, then run `make docs`
 and `make generate_schema`. Commit the generated file with the change that produced it.
 
-## The checks
+## Checks
 
 Run every check with one command:
 
@@ -62,7 +62,7 @@ The prose check runs separately:
 make lint_prose
 ```
 
-## The live tests
+## Live tests
 
 The integration tests call the real API. They create objects in the account of the key, and they
 delete each one again.
@@ -78,7 +78,7 @@ make test_integration
 An inbox costs money, so the tests share one inbox and count every creation. A run that would
 create more than 3 inboxes fails instead.
 
-## The Pulumi home directory
+## Pulumi home directory
 
 The recipes point `PULUMI_HOME` at `.pulumi` inside this repository, so an installed plugin stays
 with the checkout. The `pulumi login` command writes a sign-in file into that directory, and a
@@ -89,7 +89,7 @@ before you run `pulumi` by hand:
 export PULUMI_HOME=$(mktemp -d)
 ```
 
-## The words this repository uses
+## Words this repository uses
 
 One concept takes one word, and every part of this repository uses that word. Use the word in this
 table and no other.
@@ -119,7 +119,7 @@ The concepts below arrived with this provider, and they take these words.
 | the read-only call a program makes | function |
 | the DNS name that MailSlurp serves | custom domain |
 
-### The words that never appear
+### Words that never appear
 
 A test reads the list below. No shipped text carries any of these words outside a code sample,
 because each one names a concept that already has its word.
@@ -139,13 +139,13 @@ because each one names a concept that already has its word.
 - `id`
 - `we`
 
-## The writing rules
+## Writing rules
 
 The same rules hold for every user-facing string:
 
-- the registry pages
-- the schema descriptions
-- the error messages
+- registry pages
+- schema descriptions
+- error messages
 
 1. Write one instruction per sentence, and keep a step to 20 words.
 2. Keep a statement to 25 words.
@@ -157,13 +157,13 @@ The same rules hold for every user-facing string:
 The `make lint_prose` target reads these rules where a script can. It reads the pages of this
 repository and every description of the committed schema.
 
-## The descriptions in the code
+## Descriptions in the code
 
 A resource description is a raw string that `dedent` reads. Raw strings cannot hold a backtick, so
 write an identifier in double quotation marks there, and `dedent` turns each one into a backtick.
 This is the one place where a double quotation mark is right.
 
-## The pull request
+## Pull request
 
 1. Write the failing test first.
 2. Run it.

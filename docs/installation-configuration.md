@@ -4,7 +4,7 @@ meta_desc: Provides an overview on how to configure the Pulumi MailSlurp provide
 layout: package
 ---
 
-## The packages
+## Packages
 
 The MailSlurp provider ships as one package per language.
 
@@ -15,7 +15,7 @@ The MailSlurp provider ships as one package per language.
 | Go | [`github.com/jschady/pulumi-mailslurp/sdk/go/mailslurp`](https://pkg.go.dev/github.com/jschady/pulumi-mailslurp/sdk/go/mailslurp) |
 | .NET | [`Jschady.Mailslurp`](https://www.nuget.org/packages/Jschady.Mailslurp) |
 
-## The installation
+## Installation
 
 Run the command for the language that your program uses.
 
@@ -43,7 +43,7 @@ go get github.com/jschady/pulumi-mailslurp/sdk/go/mailslurp
 dotnet add package Jschady.Mailslurp
 ```
 
-## The API key
+## API key
 
 The provider authenticates with one API key. MailSlurp shows the key in the dashboard of your
 account.
@@ -65,14 +65,14 @@ pulumi config set --secret mailslurp:apiKey your-api-key
 
 The provider reads the environment variable when the stack configuration carries no `apiKey`.
 
-## The provider configuration
+## Provider configuration
 
 | Property | Environment variable | What it is |
 | --- | --- | --- |
 | `apiKey` | `MAILSLURP_API_KEY` | The API key that the provider authenticates with. |
 | `endpoint` | none | The base URL of the API. The default is `https://api.mailslurp.com`. Set it to reach a mock server. |
 
-## The explicit provider
+## Explicit provider
 
 The program below builds one provider from the stack configuration and creates an inbox with it.
 Use this shape when one stack must reach two MailSlurp accounts.

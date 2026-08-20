@@ -6,16 +6,16 @@ layout: package
 
 The MailSlurp provider creates and manages the email objects of a MailSlurp account:
 
-- the inboxes
-- the webhooks
-- the inbox rulesets
-- the inbox forwarders
-- the email templates
+- inboxes
+- webhooks
+- inbox rulesets
+- inbox forwarders
+- email templates
 
 The provider also carries two functions. The `getInbox` function reads one inbox, and the
 `getDomain` function reads one custom domain.
 
-## The example
+## Example
 
 The program below creates one inbox and exports the address that MailSlurp assigns to it.
 
@@ -121,19 +121,19 @@ func main() {
 
 {{< /chooser >}}
 
-## The API key
+## API key
 
 The provider reads the API key from the `MAILSLURP_API_KEY` environment variable. You can set the
 key in the stack configuration instead. The
 [installation and configuration page](/registry/packages/mailslurp/installation-configuration/)
 carries both commands and the rest of the provider configuration.
 
-## The resource identifier
+## Resource identifier
 
 MailSlurp assigns an identifier to each object that it stores. The provider reports that identifier
 as the Pulumi `id` output, and the value matches the identifier the account holds.
 
-## The import of an existing object
+## Import of an existing object
 
 You can adopt a MailSlurp object that Pulumi did not create. The provider reads the object, and
 `pulumi import` writes the properties of the answer into a generated declaration.
@@ -166,18 +166,18 @@ your program needs them.
 | `Inbox` | `domainName`, `domainId`, `useDomainPool`, `useShortAddress`, `prefix`, `expiresIn` |
 | `Webhook` | `tags` |
 
-## The cost of an inbox
+## Cost of an inbox
 
 **Warning:** If you change a property that forces a replacement, Pulumi creates a new inbox. Each
 creation counts against the 30-day creation quota of the account, and MailSlurp bills it on a paid
 plan. A delete refunds nothing.
 
-## The limitations
+## Limitations
 
 Each limitation below is a fact about the MailSlurp API or about a generated SDK. The provider
 states it instead of working around it.
 
-### The inbox
+### Inbox
 
 The API answers 200 for an update that clears the `name` or the `description` of an inbox, and it
 keeps the old value. The provider refuses that change and asks you to replace the inbox. Whether
@@ -186,7 +186,7 @@ the empty string clears such a property, where the null value does not, is uncon
 MailSlurp decides `virtualInbox` from the plan of the account. An inbox that you create with the
 default options can read `true`, and the provider reports what the API sends.
 
-### The webhook
+### Webhook
 
 MailSlurp answers 409 for an update of a webhook that names no inbox and keeps its `url` and its
 `eventName`. The API reads the webhook itself as the duplicate. Change the `url` or the
@@ -199,7 +199,7 @@ This provider does not carry the `aiTransformId` property of the API. An update 
 webhook drops a transform that you set outside Pulumi. An update of the headers alone keeps the
 transform. Whether an update keeps a `basicAuth` value that you set outside Pulumi is unconfirmed.
 
-### The inbox forwarder
+### Inbox forwarder
 
 MailSlurp gates the inbox forwarder on the plan of the account. The plan of the account that tested
 this provider does not enable the inbox forwarder, so the live create is unverified. The tests
@@ -210,7 +210,7 @@ specification marks neither as required. MailSlurp documents no meaning for the 
 the `should` property, so this page states none. This provider does not carry the
 `attachmentTextExtractionMethod` property of the API.
 
-### The custom domain
+### Custom domain
 
 The account that tested this provider holds no custom domain, so the `getDomain` function is
 unverified against live domain data. The tests cover the mapping with recorded answers.
@@ -218,24 +218,24 @@ unverified against live domain data. The tests cover the mapping with recorded a
 A custom domain becomes verified after your DNS records propagate. MailSlurp does not document how
 long the wait is, so `isVerified` can read `false` for some time after you add the records.
 
-### The values that the API sends
+### Values that the API sends
 
 The `domainType` output carries the value that MailSlurp sends. The provider does not check the
 value against the published list, so a new value reaches your stack unchanged. The `scope` and the
 `action` of an inbox ruleset work the same way.
 
-### The Python enum members
+### Python enum members
 
 The Python SDK spells two enum members `AND_` and `OR_`, because `and` and `or` are Python
 keywords. Every other member spells the value the API sends.
 
-### The preview
+### Preview
 
 At preview of a create, every output that MailSlurp assigns reads as unknown. Two kinds of output
 do not. An optional output that carries no value is absent from the plan. An output that mirrors an
 input carries what you wrote, and the `emailAddress` output of an inbox mirrors the address you set.
 
-### The account
+### Account
 
 MailSlurp publishes no error response for any operation, so the provider models the error body from
 live answers. Whether a 429 answer carries `retryAfterSeconds` is unconfirmed. The documentation

@@ -1,4 +1,4 @@
-# The registry pull request
+# Registry pull request
 
 This page is the draft of the pull request that lists this provider on the Pulumi Registry. Nobody
 opened it. The registry lists a package only after a release exists, and the release is a human
@@ -39,7 +39,7 @@ absent from the map today. Add one pair, in alphabetical position:
 Publishing fails without the pair. This is the one file the automation accepts beside the package
 list, because a new publisher has to arrive with its own entry.
 
-## The checklist before you open it
+## Checklist before you open it
 
 Each row is a decision a person makes. Work through the table from the top.
 
@@ -105,7 +105,7 @@ Run this after the release publishes:
 pulumi plugin install resource mailslurp 0.1.0 --server github://api.github.com/jschady/pulumi-mailslurp
 ```
 
-## The pull request body
+## Pull request body
 
 > ### Add the MailSlurp provider
 >
@@ -118,7 +118,7 @@ pulumi plugin install resource mailslurp 0.1.0 --server github://api.github.com/
 >
 > `jschady` is a new publisher, so this pull request also adds the display name.
 
-## The `/check` command
+## `/check` command
 
 The automation reads the live provider repository, not the diff in the pull request. To fix a red
 check, change this repository and comment `/check` on the pull request. Do not push a new commit to
@@ -160,21 +160,21 @@ Two details of that table are worth knowing before the first release.
 - The SDK install probe covers npm, PyPI and Go. It runs no probe for NuGet, so a broken .NET
   package reaches the registry unreported.
 
-## The notes
+## Notes
 
-### The page a reader lands on
+### Page a reader lands on
 
 `docs/_index.md` is the index page of the package, and `docs/installation-configuration.md` is the
 Installation and Configuration page. The check reads the first one and refuses without it. Both
 pages carry install commands for packages that publish with the first release.
 
-### The Python enum members
+### Python enum members
 
 Two Python enum members keep a trailing underscore: `AND_` and `OR_`. Both words are Python
 keywords, so the generator renames them. The other 35 members spell the wire value exactly. A test
 in `provider/sdk_generated_test.go` refuses a build that renames any of the 37.
 
-### The dynamic path is a different process
+### Dynamic path is a different process
 
 A dynamically bridged Terraform provider, the kind you add with `pulumi package add
 terraform-provider <name>`, cannot be listed by pull request. That path needs a "New Package" issue
