@@ -295,7 +295,7 @@ func TestTheReadmeRepeatsNoSentenceOfThePages(t *testing.T) {
 // text. The list lives in that page, so one edit moves both the rule and the check.
 func forbiddenWords(t *testing.T) []string {
 	t.Helper()
-	const heading = "### The words that never appear"
+	const heading = "### Words that never appear"
 	body := readRepoFile(t, "CONTRIBUTING.md")
 	start := strings.Index(body, heading)
 	require.GreaterOrEqual(t, start, 0, "the contribution page must carry the list")
