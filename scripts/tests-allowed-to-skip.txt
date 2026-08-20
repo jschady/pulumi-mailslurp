@@ -1,0 +1,7 @@
+# Tests this file names may skip themselves in the credentialed jobs. Each entry carries its
+# reason; remove the entry when the reason goes away, and the gate hunts that skip again.
+
+# The account holds no verified domain: verifying one needs DNS records at a registrar, which
+# no suite can write. The getDomain legs read the domains the account holds, so they skip.
+TestGetDomainReadsTheDomainsTheAccountAlreadyHolds
+TestGetDomainAcceptsCheckForErrorsAgainstALiveDomain

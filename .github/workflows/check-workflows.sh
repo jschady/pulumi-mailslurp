@@ -299,6 +299,9 @@ check "pull-request.yml lists the tests the integration tag adds" $?
 for f in pull-request.yml main.yml acceptance-tests.yml; do
 	uncommented <"$WF/$f" 2>/dev/null | grep 'scripts/check-tests-ran.sh' >/dev/null
 	check "$f runs the gate after the credentialed tests" $?
+	# Without the third argument the gate fails the allowed skips too, so the wiring is asserted.
+	uncommented <"$WF/$f" 2>/dev/null | grep 'check-tests-ran.sh.*scripts/tests-allowed-to-skip.txt' >/dev/null
+	check "$f hands the gate the allowed-skips file" $?
 done
 
 if [ -x "$GATE" ]; then
@@ -326,6 +329,25 @@ if [ -x "$GATE" ]; then
 	: >"$TMP/integration-tests.txt"
 	! bash "$GATE" "$TMP/integration-tests.txt" "$TMP/integration.log" >/dev/null 2>&1
 	check "the gate fails when the list names no test" $?
+
+	# The account holds no verified domain, so scripts/tests-allowed-to-skip.txt names the
+	# getDomain legs. The allowance is per name: any other skip still fails, and a stale name
+	# is dead wiring the gate refuses.
+	printf 'TestInboxLifecycleIntegration\n' >"$TMP/integration-tests.txt"
+	printf '=== RUN   TestInboxLifecycleIntegration\n--- SKIP: TestInboxLifecycleIntegration (0.00s)\nPASS\n' >"$TMP/integration.log"
+	printf '# the account cannot hold the fixture\nTestInboxLifecycleIntegration\n' >"$TMP/allowed.txt"
+	bash "$GATE" "$TMP/integration-tests.txt" "$TMP/integration.log" "$TMP/allowed.txt" >/dev/null 2>&1
+	check "the gate accepts a skip the allowed file names" $?
+
+	printf 'TestInboxLifecycleIntegration\nTestInboxLifecycleIntegrationExtra\n' >"$TMP/integration-tests.txt"
+	printf '=== RUN   TestInboxLifecycleIntegration\n--- PASS: TestInboxLifecycleIntegration (0.10s)\n=== RUN   TestInboxLifecycleIntegrationExtra\n--- SKIP: TestInboxLifecycleIntegrationExtra (0.00s)\n' >"$TMP/integration.log"
+	! bash "$GATE" "$TMP/integration-tests.txt" "$TMP/integration.log" "$TMP/allowed.txt" >/dev/null 2>&1
+	check "the gate still fails a skip outside the allowed names" $?
+
+	printf 'TestInboxLifecycleIntegration\n' >"$TMP/integration-tests.txt"
+	printf 'TestInboxLifecycleIntegrationExtra\n' >"$TMP/allowed.txt"
+	! bash "$GATE" "$TMP/integration-tests.txt" "$TMP/integration.log" "$TMP/allowed.txt" >/dev/null 2>&1
+	check "the gate refuses an allowed name the list does not carry" $?
 fi
 
 echo

@@ -378,7 +378,7 @@ jobs:
           MAILSLURP_API_KEY: ${{ secrets.MAILSLURP_API_KEY }}
         run: make test_integration GOTEST='go test -v' | tee "$RUNNER_TEMP/integration.log"
       - name: Confirm every integration test started
-        run: ./scripts/check-tests-ran.sh "$RUNNER_TEMP/integration-tests.txt" "$RUNNER_TEMP/integration.log"
+        run: ./scripts/check-tests-ran.sh "$RUNNER_TEMP/integration-tests.txt" "$RUNNER_TEMP/integration.log" scripts/tests-allowed-to-skip.txt
 
   snapshot:
     name: snapshot
