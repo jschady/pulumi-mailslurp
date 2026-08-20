@@ -71,3 +71,5 @@ The `lint` target reads the Go code. The `lint_prose` target reads the prose of:
 ## The license
 
 This provider uses the Apache License 2.0. Read the `LICENSE` file for the full text.
+
+test
