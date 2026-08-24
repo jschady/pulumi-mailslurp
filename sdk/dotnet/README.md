@@ -36,9 +36,10 @@ every property the provider reads.
 
 ## Documentation
 
-The [MailSlurp page of the Pulumi registry](https://www.pulumi.com/registry/packages/mailslurp/)
-serves the API documentation. The [overview page](./docs/_index.md) of this repository holds one
-example program per language, and it names the known limitations.
+The [overview page](./docs/_index.md) of this repository holds one example program per language,
+and it names the known limitations. The
+[installation and configuration page](./docs/installation-configuration.md) lists every property
+the provider reads.
 
 ## Contributing
 
