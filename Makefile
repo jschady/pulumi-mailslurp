@@ -176,9 +176,11 @@ install_dotnet_sdk: build_dotnet
 install_go_sdk: build_go
 	@echo "A Go program reaches sdk/go/$(PACK) by its module path or a replace directive."
 
+# The recorder that reads and writes the cassettes lives under internal/, and no other target
+# builds it, so its own tests run here beside the provider tests.
 .PHONY: test_provider
 test_provider:
-	$(GOTEST) -race -short ./provider/...
+	$(GOTEST) -race -short ./provider/... ./internal/...
 
 # This check regenerates the four SDKs, which needs the Pulumi CLI, so -short keeps it out of
 # test_provider.
@@ -186,12 +188,31 @@ test_provider:
 test_generated:
 	$(GOTEST) -count=1 -run TestGeneratingTheSDKsLeavesTheTreeClean ./provider/...
 
+# Every test run reads its answers from a cassette, so a pull request needs no account. A record
+# run writes those cassettes and a live run reaches MailSlurp, and both of them need the key. The
+# guard sits inside the recipe: a refusal at parse time would break `make -n`.
+require_api_key = test -n "$$MAILSLURP_API_KEY" || { echo "MAILSLURP_API_KEY is empty. Set it and run this target again."; exit 1; }
+
 # The generation check rewrites four SDK directories, so a live run that included it destroyed the
 # staged builds every time. Its own target above is the caller that wants it.
+run_integration = $(GOTEST) -race -count=1 -tags=integration -timeout 30m \
+	-skip TestGeneratingTheSDKsLeavesTheTreeClean ./provider/...
+
 .PHONY: test_integration
 test_integration:
-	$(GOTEST) -race -count=1 -tags=integration -timeout 30m \
-		-skip TestGeneratingTheSDKsLeavesTheTreeClean ./provider/...
+	$(run_integration)
+
+.PHONY: record_integration
+record_integration: export MAILSLURP_TEST_MODE := record
+record_integration:
+	@$(require_api_key)
+	$(run_integration)
+
+.PHONY: test_integration_live
+test_integration_live: export MAILSLURP_TEST_MODE := live
+test_integration_live:
+	@$(require_api_key)
+	$(run_integration)
 
 # The YAML program legs and pulumi convert read their plugins from the Pulumi home: ambient
 # discovery and automatic acquisition are off, so only an installed plugin resolves. The provider
@@ -202,9 +223,23 @@ install_plugins:
 	$(PULUMI) plugin install converter yaml $(YAML_CONVERTER_VERSION)
 
 # A cached pass of a live run reads exactly like a fresh one, so the count switch forbids the cache.
+run_examples = $(GOTEST) -count=1 -v -tags=all -timeout 2h -parallel $(TESTPARALLELISM) ./examples/...
+
 .PHONY: test_examples
 test_examples: install_plugins
-	$(GOTEST) -count=1 -v -tags=all -timeout 2h -parallel $(TESTPARALLELISM) ./examples/...
+	$(run_examples)
+
+.PHONY: record_examples
+record_examples: export MAILSLURP_TEST_MODE := record
+record_examples: install_plugins
+	@$(require_api_key)
+	$(run_examples)
+
+.PHONY: test_examples_live
+test_examples_live: export MAILSLURP_TEST_MODE := live
+test_examples_live: install_plugins
+	@$(require_api_key)
+	$(run_examples)
 
 # go vet builds the test package without running it, so no TestMain reaches the API here.
 .PHONY: compile_examples

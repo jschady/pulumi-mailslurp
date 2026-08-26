@@ -6,6 +6,7 @@ import "testing"
 
 // The base program converted to nodejs. It attaches to the shared inbox, so it creates none.
 func TestTheBaseProgramInNodeJs(t *testing.T) {
-	opts := nodejsOptions(t).With(baseProgramOptions(t, "nodejs"))
-	runProgram(t, opts)
+	fixture := recorderFor(t)
+	opts := nodejsOptions(t).With(baseProgramOptions(t, fixture, "nodejs"))
+	runProgram(t, fixture, opts)
 }

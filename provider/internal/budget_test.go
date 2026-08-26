@@ -50,10 +50,11 @@ func (c countingClient) CreateInbox(ctx context.Context, opts CreateInboxOptions
 // causes it, and none of them owns it, so the budget guard below leaves it out of a test's own count.
 var sharedInboxCreations atomic.Int64
 
-// createTheSharedInbox names the inbox before it asks for it, so a create the vendor performed and
-// then reported as a failure still answers a name the teardown can sweep.
-func createTheSharedInbox(ctx context.Context, client Client) (id, name string, err error) {
-	name = newTestName(testInboxKind)
+// createTheSharedInbox creates the shared inbox under the name the caller drew. It takes the name
+// rather than drawing one, because a replay has to send the name its recording holds, and because
+// a caller that names the inbox before the create still holds a name the teardown can sweep when
+// the vendor performs the create and then reports a failure.
+func createTheSharedInbox(ctx context.Context, client Client, name string) (string, error) {
 	// The create goes through the budget gate, and against the suite rather than the caller.
 	sharedInboxCreations.Add(1)
 	created, err := countingClient{Client: client}.CreateInbox(ctx, CreateInboxOptions{
@@ -62,9 +63,9 @@ func createTheSharedInbox(ctx context.Context, client Client) (id, name string, 
 		Tags:        []string{testNamePrefix + "shared"},
 	})
 	if err != nil {
-		return "", name, err
+		return "", err
 	}
-	return created.ID, name, nil
+	return created.ID, nil
 }
 
 // ownCreations counts the inboxes a test built for itself. The shared inbox belongs to the suite,
@@ -147,7 +148,8 @@ func TestTheSharedInboxCreateChargesTheBudgetAndNotTheCaller(t *testing.T) {
 			return &InboxDto{ID: testInboxID}, nil
 		})
 
-	id, name, err := createTheSharedInbox(context.Background(), mock)
+	name := newTestName(testInboxKind)
+	id, err := createTheSharedInbox(context.Background(), mock, name)
 	require.NoError(t, err)
 	assert.Equal(t, testInboxID, id)
 	assert.True(t, testInboxNamePattern.MatchString(name), "the sweeper matches this name: %q", name)
@@ -159,17 +161,26 @@ func TestTheSharedInboxCreateChargesTheBudgetAndNotTheCaller(t *testing.T) {
 }
 
 // A create the vendor performed and then reported as a failure leaves an inbox behind, so the name
-// must survive the failure for the teardown to sweep it.
+// must survive the failure for the teardown to sweep it. The caller draws the name before the
+// create, so the failure never takes it away.
 func TestTheSharedInboxKeepsItsNameWhenTheCreateFails(t *testing.T) {
 	resetTheInboxCounters(t)
 
 	mock := NewMockClient(gomock.NewController(t))
+	var got CreateInboxOptions
 	mock.EXPECT().CreateInbox(gomock.Any(), gomock.Any()).
-		Return(nil, &APIError{StatusCode: http.StatusInternalServerError})
+		DoAndReturn(func(_ context.Context, opts CreateInboxOptions) (*InboxDto, error) {
+			got = opts
+			return nil, &APIError{StatusCode: http.StatusInternalServerError}
+		})
 
-	id, name, err := createTheSharedInbox(context.Background(), mock)
+	name := newTestName(testInboxKind)
+	id, err := createTheSharedInbox(context.Background(), mock, name)
 	require.Error(t, err)
 	assert.Empty(t, id, "a create that failed answers no identifier, and a blank one deletes nothing")
 	assert.True(t, testInboxNamePattern.MatchString(name),
 		"the teardown sweeps this name, so a create the vendor performed is still removed: %q", name)
+	require.NotNil(t, got.Name)
+	assert.Equal(t, name, *got.Name,
+		"the failed create carried the name, so the inbox it may have built is swept")
 }

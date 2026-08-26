@@ -1,0 +1,640 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 106
+        host: api.mailslurp.com
+        body: '{"field":"SUBJECT","match":"weekly*","forwardToRecipients":["pulumi-test-forwarder-3604832b@example.com"]}'
+        form:
+            inboxId:
+                - 079ca4c2-a602-4031-b8bd-0c02b5e23513
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.mailslurp.com/forwarders?inboxId=079ca4c2-a602-4031-b8bd-0c02b5e23513
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 322
+        body: '{"id":"8f1662c7-f186-4ae9-a0b1-b9d2f8a06386","inboxId":"079ca4c2-a602-4031-b8bd-0c02b5e23513","name":null,"field":"SUBJECT","match":"weekly*","forwardToRecipients":["pulumi-test-forwarder-3604832b@example.com"],"createdAt":"2026-08-26T01:13:43.105Z","should":null,"matchOptions":null,"attachmentTextExtractionMethod":null}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "322"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:43 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 224.265375ms
+    - id: 1
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        url: https://api.mailslurp.com/forwarders/8f1662c7-f186-4ae9-a0b1-b9d2f8a06386
+        method: DELETE
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 0
+        body: ""
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Date:
+                - Wed, 26 Aug 2026 01:13:43 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 204 No Content
+        code: 204
+        duration: 140.052458ms
+    - id: 2
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 126
+        host: api.mailslurp.com
+        body: '{"field":"SUBJECT","should":"WILDCARD","match":"weekly*","forwardToRecipients":["pulumi-test-forwarder-fb9cf65f@example.com"]}'
+        form:
+            inboxId:
+                - 079ca4c2-a602-4031-b8bd-0c02b5e23513
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.mailslurp.com/forwarders?inboxId=079ca4c2-a602-4031-b8bd-0c02b5e23513
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 328
+        body: '{"id":"3b62ba6f-43c8-4ed6-a3a8-719920a1aa2b","inboxId":"079ca4c2-a602-4031-b8bd-0c02b5e23513","name":null,"field":"SUBJECT","match":"weekly*","forwardToRecipients":["pulumi-test-forwarder-fb9cf65f@example.com"],"createdAt":"2026-08-26T01:13:43.574Z","should":"WILDCARD","matchOptions":null,"attachmentTextExtractionMethod":null}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "328"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:43 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 348.29775ms
+    - id: 3
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "0"
+            since:
+                - "2026-08-19T01:13:43Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=0&since=2026-08-19T01%3A13%3A43Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 648
+        body: '{"content":[{"id":"3b62ba6f-43c8-4ed6-a3a8-719920a1aa2b","inboxId":"079ca4c2-a602-4031-b8bd-0c02b5e23513","name":null,"field":"SUBJECT","match":"weekly*","forwardToRecipients":["pulumi-test-forwarder-fb9cf65f@example.com"],"createdAt":"2026-08-26T01:13:43.574Z","should":"WILDCARD","matchOptions":null,"attachmentTextExtractionMethod":null}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":1,"first":true,"empty":false}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "648"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:43 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 126.415916ms
+    - id: 4
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "1"
+            since:
+                - "2026-08-19T01:13:43Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=1&since=2026-08-19T01%3A13%3A43Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 321
+        body: '{"content":[],"pageable":{"pageNumber":1,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":20,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":1,"numberOfElements":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"first":false,"empty":true}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "321"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:43 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 121.301208ms
+    - id: 5
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 127
+        host: api.mailslurp.com
+        body: '{"field":"SUBJECT","should":"WILDCARD","match":"monthly*","forwardToRecipients":["pulumi-test-forwarder-fb9cf65f@example.com"]}'
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.mailslurp.com/forwarders/3b62ba6f-43c8-4ed6-a3a8-719920a1aa2b
+        method: PUT
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 329
+        body: '{"id":"3b62ba6f-43c8-4ed6-a3a8-719920a1aa2b","inboxId":"079ca4c2-a602-4031-b8bd-0c02b5e23513","name":null,"field":"SUBJECT","match":"monthly*","forwardToRecipients":["pulumi-test-forwarder-fb9cf65f@example.com"],"createdAt":"2026-08-26T01:13:43.574Z","should":"WILDCARD","matchOptions":null,"attachmentTextExtractionMethod":null}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "329"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 279.668ms
+    - id: 6
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "0"
+            since:
+                - "2026-08-19T01:13:44Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=0&since=2026-08-19T01%3A13%3A44Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 649
+        body: '{"content":[{"id":"3b62ba6f-43c8-4ed6-a3a8-719920a1aa2b","inboxId":"079ca4c2-a602-4031-b8bd-0c02b5e23513","name":null,"field":"SUBJECT","match":"monthly*","forwardToRecipients":["pulumi-test-forwarder-fb9cf65f@example.com"],"createdAt":"2026-08-26T01:13:43.574Z","should":"WILDCARD","matchOptions":null,"attachmentTextExtractionMethod":null}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":0,"numberOfElements":1,"sort":{"empty":false,"sorted":true,"unsorted":false},"first":true,"empty":false}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "649"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 129.084375ms
+    - id: 7
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "1"
+            since:
+                - "2026-08-19T01:13:44Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=1&since=2026-08-19T01%3A13%3A44Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 321
+        body: '{"content":[],"pageable":{"pageNumber":1,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":20,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":1,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"first":false,"empty":true}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "321"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 123.62875ms
+    - id: 8
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        url: https://api.mailslurp.com/forwarders/3b62ba6f-43c8-4ed6-a3a8-719920a1aa2b
+        method: DELETE
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 0
+        body: ""
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 204 No Content
+        code: 204
+        duration: 135.75975ms
+    - id: 9
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "0"
+            since:
+                - "2026-08-19T01:13:44Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=0&since=2026-08-19T01%3A13%3A44Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 319
+        body: '{"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":0,"numberOfElements":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"first":true,"empty":true}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "319"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 126.14ms
+    - id: 10
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "0"
+            since:
+                - "2026-08-19T01:13:44Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=0&since=2026-08-19T01%3A13%3A44Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 319
+        body: '{"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"first":true,"empty":true}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "319"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 122.039834ms
+    - id: 11
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "0"
+            since:
+                - "2026-08-19T01:13:44Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/forwarders?page=0&since=2026-08-19T01%3A13%3A44Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 319
+        body: '{"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":0,"numberOfElements":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"first":true,"empty":true}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "319"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:44 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 123.303708ms

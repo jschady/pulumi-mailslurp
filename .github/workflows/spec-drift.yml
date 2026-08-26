@@ -8,10 +8,16 @@ on:
 permissions:
   contents: read
 
+env:
+  BRANCH: bot/spec-update
+
 jobs:
   spec_diff:
     name: spec_diff
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7.0.1
@@ -19,28 +25,106 @@ jobs:
         env:
           SPEC_URL: https://api.mailslurp.com/v2/api-docs
         run: curl -fsSL --retry 3 --retry-delay 5 "$SPEC_URL" -o "$RUNNER_TEMP/live-openapi.json"
-      - name: Compare the path sets
+      # The block exits non-zero when the surface the client calls moved, and the workflow check
+      # runs it against doctored specs to prove that. continue-on-error keeps the job green: a
+      # vendor change is a pull request to review, not a failed run.
+      - name: Compare the operations the client calls
+        id: compare
+        continue-on-error: true
         env:
           PINNED_SPEC: api/openapi.json
           LIVE_SPEC: ${{ runner.temp }}/live-openapi.json
         run: |
+          set -uo pipefail
+          report="${RUNNER_TEMP:-$(mktemp -d)}/spec-drift.md"
+          python3 - <<'PY' | tee "$report"
+          import json, os, sys
+
+          # The path families provider/internal/client_*.go call. A path outside them can come and
+          # go without the provider noticing, so only these and what they reference count as drift.
+          FAMILIES = ("/inboxes", "/domains", "/forwarders", "/rulesets", "/templates", "/webhooks")
+
+          def load(name):
+              with open(os.environ[name]) as handle:
+                  return json.load(handle)
+
+          def watched(spec):
+              """The watched paths, plus every component they reach through a $ref."""
+              paths = {key: value for key, value in spec.get("paths", {}).items()
+                       if any(key == family or key.startswith(family + "/") for family in FAMILIES)}
+              components = {}
+              todo = [paths]
+              while todo:
+                  node = todo.pop()
+                  if isinstance(node, dict):
+                      ref = node.get("$ref")
+                      if isinstance(ref, str) and ref.startswith("#/components/"):
+                          _, _, kind, name = ref.split("/", 3)
+                          if name not in components.get(kind, {}):
+                              target = spec.get("components", {}).get(kind, {}).get(name)
+                              components.setdefault(kind, {})[name] = target
+                              todo.append(target)
+                      todo.extend(node.values())
+                  elif isinstance(node, list):
+                      todo.extend(node)
+              return paths, components
+
+          def diff(label, before, after):
+              lines = []
+              for key in sorted(set(before) | set(after)):
+                  if key not in after:
+                      lines.append(f"- {label} `{key}`: gone")
+                  elif key not in before:
+                      lines.append(f"- {label} `{key}`: added")
+                  elif before[key] != after[key]:
+                      lines.append(f"- {label} `{key}`: changed")
+              return lines
+
+          pinned, live = load("PINNED_SPEC"), load("LIVE_SPEC")
+          pinned_paths, pinned_components = watched(pinned)
+          live_paths, live_components = watched(live)
+
+          findings = diff("path", pinned_paths, live_paths)
+          for kind in sorted(set(pinned_components) | set(live_components)):
+              findings += diff(kind, pinned_components.get(kind, {}), live_components.get(kind, {}))
+
+          elsewhere = sorted(set(live.get("paths", {})) - set(pinned.get("paths", {})) - set(live_paths))
+          if elsewhere:
+              print(f"MailSlurp added {len(elsewhere)} paths outside the watched families:")
+              print("\n".join(f"- `{path}`" for path in elsewhere))
+              print()
+
+          watched_count = sum(len(names) for names in pinned_components.values())
+          if not findings:
+              print(f"The {len(pinned_paths)} watched paths and the {watched_count} components they reference match.")
+              sys.exit(0)
+          print("MailSlurp changed the surface the client calls:")
+          print("\n".join(findings))
+          sys.exit(1)
+          PY
+      - name: Pin the live spec and open the pull request
+        if: steps.compare.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           set -euo pipefail
-          work="$(mktemp -d)"
-          jq -r '.paths | keys[]' "$PINNED_SPEC" | sort >"$work/pinned"
-          jq -r '.paths | keys[]' "$LIVE_SPEC" | sort >"$work/live"
-          gone="$(comm -23 "$work/pinned" "$work/live")"
-          added="$(comm -13 "$work/pinned" "$work/live")"
-          if [ -z "$gone" ] && [ -z "$added" ]; then
-            echo "Both specs serve the same $(wc -l <"$work/pinned" | tr -d ' ') paths."
-            exit 0
+          ./scripts/pin-spec.sh "$RUNNER_TEMP/live-openapi.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add api/openapi.json provider/foundation_test.go
+          git commit -m "Pin the MailSlurp spec of $(date -u +%Y-%m-%d)"
+          git push --force origin "$BRANCH"
+          {
+            echo "The weekly spec check found a change in the operations the client calls."
+            echo "This pull request pins the live spec. Read the list, then read the client for each item."
+            echo
+            cat "$RUNNER_TEMP/spec-drift.md"
+            echo
+            echo "GitHub starts no checks on a pull request that GITHUB_TOKEN opens. Close it and open it again to start them."
+          } >"$RUNNER_TEMP/body.md"
+          if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq 'length')" = "0" ]; then
+            gh pr create --base main --head "$BRANCH" --title "Pin the MailSlurp spec" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/body.md"
           fi
-          if [ -n "$gone" ]; then
-            echo "MailSlurp dropped these paths:"
-            echo "$gone"
-          fi
-          if [ -n "$added" ]; then
-            echo "MailSlurp added these paths:"
-            echo "$added"
-          fi
-          echo "Pin the new spec in api/openapi.json. Read the client again for the paths that moved."
-          exit 1

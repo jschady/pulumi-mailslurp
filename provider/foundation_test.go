@@ -209,7 +209,8 @@ func TestMakefileDefinesEveryTargetName(t *testing.T) {
 		"codegen", "sdk", "generate_nodejs", "generate_python", "generate_dotnet", "generate_go",
 		"build_nodejs", "build_python", "build_dotnet", "build_go", "install_nodejs_sdk",
 		"install_python_sdk", "install_dotnet_sdk", "install_go_sdk", "test_provider",
-		"test_generated", "test_integration", "test_examples", "compile_examples",
+		"test_generated", "test_integration", "record_integration", "test_integration_live",
+		"test_examples", "record_examples", "test_examples_live", "compile_examples",
 		"compile_nodejs_example", "compile_python_example", "compile_dotnet_example",
 		"compile_go_example", "examples", "docs", "release_snapshot", "clean",
 	}
@@ -228,4 +229,72 @@ func TestProviderTargetLinksTheVersionSymbol(t *testing.T) {
 	require.NoError(t, err, out)
 	require.Contains(t, out, versionLdflag, "the provider target must set the one version symbol")
 	require.Empty(t, version.Version, "the version symbol stays empty until the linker sets it")
+}
+
+// The recorder that reads and writes the cassettes lives under internal/. No other target builds
+// that package, so a run that named the provider packages alone never ran its tests.
+func TestTestProviderRunsThePackagesUnderInternal(t *testing.T) {
+	out, err := runMake(t, "-n", "test_provider")
+	require.NoError(t, err, out)
+	require.Contains(t, out, "./provider/...", "test_provider must run the provider packages")
+	require.Contains(t, out, "./internal/...", "test_provider must run the packages under internal")
+}
+
+// stubMarker opens the line the fake test command prints. The line carries the mode the recipe
+// exported, so the check reads what a target does and not what it says.
+const stubMarker = "the fake test command ran in mode "
+
+// runTargetWithAStubbedTestCommand runs one target with the test command and the Pulumi CLI
+// replaced, and with the key the caller names. The stub prints the mode and stops, so the run
+// reaches no test, no plugin and no account.
+func runTargetWithAStubbedTestCommand(t *testing.T, key, target string) (string, error) {
+	t.Helper()
+	stub := filepath.Join(t.TempDir(), "stub.sh")
+	writeFile(t, stub, "#!/bin/sh\necho \""+stubMarker+"[$MAILSLURP_TEST_MODE]\"\n")
+
+	cmd := exec.Command("make", target, "GOTEST=sh "+stub, "PULUMI=true")
+	cmd.Dir = repoRoot(t)
+	// The last value of a name wins, so these two clear whatever the caller of the suite set.
+	cmd.Env = append(os.Environ(), "MAILSLURP_API_KEY="+key, "MAILSLURP_TEST_MODE=")
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// A recipe that reaches MailSlurp reads the key first, and it names the mode it runs in. A recipe
+// that lost the guard would reach the account with no key. A recipe that lost the mode would read
+// the cassettes instead of writing them, and a recording would answer that it changed nothing.
+func TestTheCredentialedTargetsReadTheKeyAndNameTheirMode(t *testing.T) {
+	for _, tc := range []struct{ target, mode string }{
+		{"record_integration", "record"},
+		{"test_integration_live", "live"},
+		{"record_examples", "record"},
+		{"test_examples_live", "live"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			out, err := runTargetWithAStubbedTestCommand(t, "", tc.target)
+			require.Error(t, err, "%s must stop when the key is empty: %s", tc.target, out)
+			require.Contains(t, out, "MAILSLURP_API_KEY is empty",
+				"%s must name the variable it needs", tc.target)
+			require.NotContains(t, out, stubMarker,
+				"%s must read the key before it runs the tests", tc.target)
+
+			out, err = runTargetWithAStubbedTestCommand(t, "a-value-that-is-no-key", tc.target)
+			require.NoError(t, err, out)
+			require.Contains(t, out, stubMarker+"["+tc.mode+"]",
+				"%s must run the tests in the %s mode", tc.target, tc.mode)
+		})
+	}
+}
+
+// Every pull request replays, so the two targets it runs need no key and name no mode. An unset
+// mode variable is the replay mode.
+func TestTheReplayTargetsNeedNoKeyAndNameNoMode(t *testing.T) {
+	for _, target := range []string{"test_integration", "test_examples"} {
+		t.Run(target, func(t *testing.T) {
+			out, err := runTargetWithAStubbedTestCommand(t, "", target)
+			require.NoError(t, err, "%s must run with no key: %s", target, out)
+			require.Contains(t, out, stubMarker+"[]",
+				"%s must leave the mode unset, which reads the cassettes", target)
+		})
+	}
 }

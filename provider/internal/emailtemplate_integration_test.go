@@ -4,6 +4,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -17,10 +18,11 @@ import (
 
 // templateIDsNamed answers the identifiers of the templates that carry one name. The lifecycle test
 // reads it to prove that the update kept the one template the create built.
-func templateIDsNamed(ctx context.Context, key, name string) ([]string, error) {
+func templateIDsNamed(ctx context.Context, httpClient *http.Client, key, name string,
+) ([]string, error) {
 	var ids []string
 	for page := range sweepMaxPages {
-		found, err := listTemplates(ctx, key, page)
+		found, err := listTemplates(ctx, httpClient, key, page)
 		if err != nil {
 			return nil, err
 		}
@@ -56,15 +58,16 @@ func variableNamesFrom(t *testing.T, output property.Map) []string {
 // account. The `content` change proves the in-place update path.
 func TestEmailTemplateLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
 
-	s := configuredServer(t, key)
-	name := newTestName(testTemplateKind)
+	s := configuredServer(t, fx, key)
+	name := recordedName(fx, testTemplateKind)
 
 	// Cleanup runs on failure too. It deletes by an identifier the list answered, never by a value
 	// it did not capture, and it tolerates a template that is already gone.
 	t.Cleanup(func() {
-		templateSweeper.sweepMarked(context.WithoutCancel(context.Background()), key, name)
+		templateSweeper.sweepMarked(context.WithoutCancel(context.Background()), fx.Client(), key, name)
 	})
 
 	inputs := func(content string) property.Map {
@@ -93,7 +96,7 @@ func TestEmailTemplateLifeCycle(t *testing.T) {
 				_, err := time.Parse(time.RFC3339, createdAt)
 				assert.NoError(t, err, "the creation time must parse as RFC 3339: %q", createdAt)
 
-				ids, err := templateIDsNamed(context.Background(), key, name)
+				ids, err := templateIDsNamed(context.Background(), fx.Client(), key, name)
 				require.NoError(t, err)
 				require.Len(t, ids, 1, "the create must build exactly one template")
 				firstID = ids[0]
@@ -114,7 +117,7 @@ func TestEmailTemplateLifeCycle(t *testing.T) {
 					assert.Equal(t, createdAt, output.Get(templatePropCreatedAt).AsString(),
 						"an in-place update never moves the creation time")
 
-					ids, err := templateIDsNamed(context.Background(), key, name)
+					ids, err := templateIDsNamed(context.Background(), fx.Client(), key, name)
 					require.NoError(t, err)
 					require.NotEmpty(t, firstID, "the create captured no identifier")
 					assert.Equal(t, []string{firstID}, ids,
@@ -129,7 +132,7 @@ func TestEmailTemplateLifeCycle(t *testing.T) {
 	require.True(t, updated, "the update leg never ran, so nothing proved the in-place update")
 
 	// The lifecycle deletes the template it created, so the account holds none of this run.
-	ids, err := templateIDsNamed(context.Background(), key, name)
+	ids, err := templateIDsNamed(context.Background(), fx.Client(), key, name)
 	require.NoError(t, err)
 	assert.Empty(t, ids, "the lifecycle left a template behind")
 }
@@ -137,9 +140,12 @@ func TestEmailTemplateLifeCycle(t *testing.T) {
 // The suite must leave the account as it found it.
 func TestTheAccountHoldsNoTestTemplateAfterTheLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
 
-	found, err := listTemplates(context.Background(), key, 0)
+	found, err := listTemplates(context.Background(), fx.Client(), key, 0)
 	require.NoError(t, err)
 	for _, summary := range found {
 		assert.False(t, testTemplateNamePattern.MatchString(summary.Name),

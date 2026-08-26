@@ -1,0 +1,59 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        form:
+            page:
+                - "0"
+            since:
+                - "2026-08-19T01:13:38Z"
+            size:
+                - "20"
+            sort:
+                - DESC
+        url: https://api.mailslurp.com/templates/paginated?page=0&since=2026-08-19T01%3A13%3A38Z&size=20&sort=DESC
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 319
+        body: '{"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"totalPages":-1,"totalElements":-1,"last":true,"size":20,"number":0,"numberOfElements":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"first":true,"empty":true}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "319"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:38 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 200 OK
+        code: 200
+        duration: 125.988791ms

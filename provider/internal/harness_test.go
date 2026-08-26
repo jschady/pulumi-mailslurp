@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -43,17 +44,29 @@ func newTestName(kind string) string {
 	return testNamePrefix + kind + "-" + hex.EncodeToString(raw[:])
 }
 
+// refusingTransport answers every request with a refusal. A reader or a sweeper that built its own
+// client instead of taking the one it was handed would reach the account, and this reaches nothing.
+type refusingTransport struct{}
+
+func (refusingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("this client sends no request")
+}
+
+// noCallsClient answers the client of a unit probe. The fake list and the fake delete of a probe
+// answer every call it makes, so a request that reached the transport is a mistake, not a read.
+func noCallsClient() *http.Client { return &http.Client{Transport: refusingTransport{}} }
+
 // collectSweepableIDs walks every page before the first delete: a delete shifts the later pages
 // and hides an entry behind it. A blank identifier reaches the whole collection, so it is skipped.
 func collectSweepableIDs[T any](
-	ctx context.Context, key, kind string,
-	list func(context.Context, string, int) ([]T, error),
+	ctx context.Context, httpClient *http.Client, key, kind string,
+	list func(context.Context, *http.Client, string, int) ([]T, error),
 	identify func(T) string,
 	sweepable func(T) bool,
 ) []string {
 	var ids []string
 	for page := range sweepMaxPages {
-		found, err := list(ctx, key, page)
+		found, err := list(ctx, httpClient, key, page)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "the sweeper could not list the %s objects: %v\n", kind, err)
 			return ids
@@ -74,7 +87,7 @@ func collectSweepableIDs[T any](
 // supplies what differs: how to list its objects, how to read a run's marker, and how to delete one.
 type sweeper[T any] struct {
 	kind    string
-	list    func(ctx context.Context, key string, page int) ([]T, error)
+	list    func(ctx context.Context, httpClient *http.Client, key string, page int) ([]T, error)
 	id      func(T) string
 	markers func(T) []string
 	remove  func(ctx context.Context, client Client, id string) error
@@ -88,15 +101,17 @@ type sweeper[T any] struct {
 
 // sweep deletes every object that sweepable accepts, and answers how many it removed. It never
 // fails the run: a sweep problem must not hide the result of the tests it prepares for.
-func (s sweeper[T]) sweep(ctx context.Context, key string, sweepable func(T) bool) int {
-	client, err := NewClient(defaultBaseURL, key)
+func (s sweeper[T]) sweep(ctx context.Context, httpClient *http.Client, key string,
+	sweepable func(T) bool,
+) int {
+	client, err := NewClientWith(defaultBaseURL, key, httpClient.Transport)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "the sweeper could not build a client: %v\n", err)
 		return 0
 	}
 
 	removed := 0
-	for _, id := range collectSweepableIDs(ctx, key, s.kind, s.list, s.id, sweepable) {
+	for _, id := range collectSweepableIDs(ctx, httpClient, key, s.kind, s.list, s.id, sweepable) {
 		if err := s.remove(ctx, client, id); err != nil && !IsGone(err) {
 			fmt.Fprintf(os.Stderr, "the sweeper could not delete a test %s: %v\n", s.kind, err)
 			continue
@@ -107,9 +122,9 @@ func (s sweeper[T]) sweep(ctx context.Context, key string, sweepable func(T) boo
 }
 
 // sweepStale removes what a crashed run left behind, so a rerun starts clean.
-func (s sweeper[T]) sweepStale(ctx context.Context, key string) int {
+func (s sweeper[T]) sweepStale(ctx context.Context, httpClient *http.Client, key string) int {
 	now := time.Now().UTC()
-	return s.sweep(ctx, key, func(item T) bool { return s.stale(item, now) })
+	return s.sweep(ctx, httpClient, key, func(item T) bool { return s.stale(item, now) })
 }
 
 // markedSweepable answers the predicate that matches one run's objects, or nil when the marker is
@@ -125,12 +140,12 @@ func (s sweeper[T]) markedSweepable(marker string) func(T) bool {
 }
 
 // sweepMarked removes every object of one test run, and nothing else.
-func (s sweeper[T]) sweepMarked(ctx context.Context, key, marker string) int {
+func (s sweeper[T]) sweepMarked(ctx context.Context, httpClient *http.Client, key, marker string) int {
 	sweepable := s.markedSweepable(marker)
 	if sweepable == nil {
 		return 0
 	}
-	return s.sweep(ctx, key, sweepable)
+	return s.sweep(ctx, httpClient, key, sweepable)
 }
 
 // pagedQuery is the query every paged list reader starts from: one page of the newest objects.
@@ -148,8 +163,11 @@ func sinceTheSweepWindow() string {
 }
 
 // listPage reads one page of a collection. The Client interface carries no list method by design,
-// so the sweeper builds its own request here rather than widening that surface.
-func listPage[T any](ctx context.Context, key, kind, path string, query url.Values) ([]T, error) {
+// so the sweeper builds its own request here rather than widening that surface. The caller hands
+// the client of its test, so a replayed read answers from the cassette and reaches no account.
+func listPage[T any](ctx context.Context, httpClient *http.Client, key, kind, path string,
+	query url.Values,
+) ([]T, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		defaultBaseURL+path+"?"+query.Encode(), nil)
 	if err != nil {
@@ -157,7 +175,7 @@ func listPage[T any](ctx context.Context, key, kind, path string, query url.Valu
 	}
 	req.Header.Set(apiKeyHeader, key)
 
-	resp, err := (&http.Client{Timeout: requestTimeout}).Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -182,10 +200,11 @@ type inboxSummary struct {
 	CreatedAt string  `json:"createdAt"`
 }
 
-func listRecentInboxes(ctx context.Context, key string, page int) ([]inboxSummary, error) {
+func listRecentInboxes(ctx context.Context, httpClient *http.Client, key string, page int,
+) ([]inboxSummary, error) {
 	query := pagedQuery(page)
 	query.Set("since", sinceTheSweepWindow())
-	return listPage[inboxSummary](ctx, key, testInboxKind, inboxesPath+"/paginated", query)
+	return listPage[inboxSummary](ctx, httpClient, key, testInboxKind, inboxesPath+"/paginated", query)
 }
 
 // webhookSummary is the part of the webhook list projection the sweeper reads. The projection
@@ -197,10 +216,11 @@ type webhookSummary struct {
 }
 
 // listWebhooks reads the account-wide webhooks as well as the inbox-scoped ones.
-func listWebhooks(ctx context.Context, key string, page int) ([]webhookSummary, error) {
+func listWebhooks(ctx context.Context, httpClient *http.Client, key string, page int,
+) ([]webhookSummary, error) {
 	query := pagedQuery(page)
 	query.Set("includeAccountWide", "true")
-	return listPage[webhookSummary](ctx, key, testWebhookKind, webhooksPath+"/paginated", query)
+	return listPage[webhookSummary](ctx, httpClient, key, testWebhookKind, webhooksPath+"/paginated", query)
 }
 
 // rulesetSummary is the part of the ruleset list projection the sweeper reads.
@@ -211,8 +231,10 @@ type rulesetSummary struct {
 }
 
 // listRulesets reads the account rulesets, for every inbox at once.
-func listRulesets(ctx context.Context, key string, page int) ([]rulesetSummary, error) {
-	return listPage[rulesetSummary](ctx, key, testRulesetKind, rulesetsPath, pagedQuery(page))
+func listRulesets(ctx context.Context, httpClient *http.Client, key string, page int,
+) ([]rulesetSummary, error) {
+	return listPage[rulesetSummary](ctx, httpClient, key, testRulesetKind, rulesetsPath,
+		pagedQuery(page))
 }
 
 // templateSummary is the part of the template list projection the sweeper reads. The projection
@@ -223,10 +245,12 @@ type templateSummary struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-func listTemplates(ctx context.Context, key string, page int) ([]templateSummary, error) {
+func listTemplates(ctx context.Context, httpClient *http.Client, key string, page int,
+) ([]templateSummary, error) {
 	query := pagedQuery(page)
 	query.Set("since", sinceTheSweepWindow())
-	return listPage[templateSummary](ctx, key, testTemplateKind, templatesPath+"/paginated", query)
+	return listPage[templateSummary](ctx, httpClient, key, testTemplateKind, templatesPath+"/paginated",
+		query)
 }
 
 // forwarderSummary is the part of the forwarder list projection the sweeper reads. The forward
@@ -238,10 +262,11 @@ type forwarderSummary struct {
 }
 
 // listForwarders reads the account forwarders, for every inbox at once.
-func listForwarders(ctx context.Context, key string, page int) ([]forwarderSummary, error) {
+func listForwarders(ctx context.Context, httpClient *http.Client, key string, page int,
+) ([]forwarderSummary, error) {
 	query := pagedQuery(page)
 	query.Set("since", sinceTheSweepWindow())
-	return listPage[forwarderSummary](ctx, key, testForwarderKind, forwardersPath, query)
+	return listPage[forwarderSummary](ctx, httpClient, key, testForwarderKind, forwardersPath, query)
 }
 
 // The five sweepers. Each one names its kind's own list reader, marker and stale predicate; the
@@ -350,7 +375,7 @@ func textOrNone(name *string) []string {
 type staleSweep struct {
 	kind   string
 	plural string
-	run    func(ctx context.Context, key string) int
+	run    func(ctx context.Context, httpClient *http.Client, key string) int
 }
 
 // staleSweeps is every kind's crash-recovery sweep, which the suite runs before its first test. A
@@ -574,7 +599,7 @@ func TestTheSweepCollectsEveryPageBeforeItDeletes(t *testing.T) {
 	}
 
 	var walked []int
-	list := func(_ context.Context, _ string, page int) ([]webhookSummary, error) {
+	list := func(_ context.Context, _ *http.Client, _ string, page int) ([]webhookSummary, error) {
 		walked = append(walked, page)
 		if page >= len(pages) {
 			return nil, nil
@@ -582,7 +607,7 @@ func TestTheSweepCollectsEveryPageBeforeItDeletes(t *testing.T) {
 		return pages[page], nil
 	}
 
-	ids := collectSweepableIDs(context.Background(), "unused", testWebhookKind, list,
+	ids := collectSweepableIDs(context.Background(), noCallsClient(), "unused", testWebhookKind, list,
 		func(s webhookSummary) string { return s.ID },
 		func(s webhookSummary) bool { return s.Name != nil && *s.Name == name })
 
@@ -601,7 +626,7 @@ func TestTheSweepDeletesEveryCollectedIdentifierAndCountsThem(t *testing.T) {
 	var deleted []string
 	probe := sweeper[webhookSummary]{
 		kind: testWebhookKind,
-		list: func(_ context.Context, _ string, page int) ([]webhookSummary, error) {
+		list: func(_ context.Context, _ *http.Client, _ string, page int) ([]webhookSummary, error) {
 			if page > 0 {
 				return nil, nil
 			}
@@ -627,13 +652,13 @@ func TestTheSweepDeletesEveryCollectedIdentifierAndCountsThem(t *testing.T) {
 		pattern: testWebhookNamePattern,
 	}
 
-	removed := probe.sweepMarked(context.Background(), "unused", name)
+	removed := probe.sweepMarked(context.Background(), noCallsClient(), "unused", name)
 	assert.Equal(t, []string{"mine", goneID, failedID}, deleted, "the sweep deleted the wrong objects")
 	assert.Equal(t, 2, removed,
 		"a delete that answered `already gone` counts, and one that failed for any other reason does not")
 
 	deleted = nil
-	assert.Zero(t, probe.sweepMarked(context.Background(), "unused", "a real webhook"),
+	assert.Zero(t, probe.sweepMarked(context.Background(), noCallsClient(), "unused", "a real webhook"),
 		"a marker this package never built must reach no delete")
 	assert.Empty(t, deleted)
 }
@@ -649,7 +674,7 @@ func TestTheStaleSweepDeletesTheLeftoversAndLeavesTheRestAlone(t *testing.T) {
 	var deleted []string
 	probe := sweeper[webhookSummary]{
 		kind: testWebhookKind,
-		list: func(_ context.Context, _ string, page int) ([]webhookSummary, error) {
+		list: func(_ context.Context, _ *http.Client, _ string, page int) ([]webhookSummary, error) {
 			if page > 0 {
 				return nil, nil
 			}
@@ -669,7 +694,7 @@ func TestTheStaleSweepDeletesTheLeftoversAndLeavesTheRestAlone(t *testing.T) {
 		stale:   webhookSweeper.stale,
 	}
 
-	assert.Equal(t, 1, probe.sweepStale(context.Background(), "unused"))
+	assert.Equal(t, 1, probe.sweepStale(context.Background(), noCallsClient(), "unused"))
 	assert.Equal(t, []string{"leftover"}, deleted,
 		"the stale sweep must leave a running run's object and another owner's object alone")
 }

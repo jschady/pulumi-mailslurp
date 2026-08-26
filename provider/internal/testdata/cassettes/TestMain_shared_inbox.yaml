@@ -1,0 +1,54 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 143
+        host: api.mailslurp.com
+        body: '{"name":"pulumi-test-inbox-b49b39da","description":"The shared inbox of the pulumi-mailslurp integration suite.","tags":["pulumi-test-shared"]}'
+        headers:
+            Content-Type:
+                - application/json
+        url: https://api.mailslurp.com/inboxes/withOptions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 688
+        body: '{"id":"079ca4c2-a602-4031-b8bd-0c02b5e23513","userId":"b007b614-bf26-4e9f-a1cf-da013f937815","created":"2026-08-26T01:13:38.772Z","createdAt":"2026-08-26T01:13:38.772Z","name":"pulumi-test-inbox-b49b39da","domainId":null,"description":"The shared inbox of the pulumi-mailslurp integration suite.","emailAddress":"d34e4688-31ff-48d2-b898-21d34f22549e@sandbox.zazamail.link","expiresAt":null,"favourite":false,"tags":["pulumi-test-shared"],"teamAccess":true,"inboxType":"HTTP_INBOX","readOnly":false,"virtualInbox":true,"functionsAs":null,"localPart":"d34e4688-31ff-48d2-b898-21d34f22549e","domain":"sandbox.zazamail.link","accountRegion":"US_WEST_2_ACCOUNT_SES_3","mergedIntoInboxId":null}'
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "688"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:38 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 201 Created
+        code: 201
+        duration: 565.462125ms

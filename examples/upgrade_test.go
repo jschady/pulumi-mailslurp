@@ -21,6 +21,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	rpc "github.com/pulumi/pulumi/sdk/v3/proto/go"
 
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
 	"github.com/jschady/pulumi-mailslurp/provider"
 )
 
@@ -45,14 +46,47 @@ func upgradeBaseline(t *testing.T) string {
 	return baseline
 }
 
+// replayedUpgradeReason says why the replay mode runs no upgrade. The baseline is a released
+// binary, and a recorder reaches the provider this process serves alone.
+const replayedUpgradeReason = "the replay mode holds no cassette for the released provider this leg deploys"
+
+// skipTheUpgradeInReplay stops the upgrade leg in the replay mode, and lets it run in the record
+// mode and the live mode.
+func skipTheUpgradeInReplay(t *testing.T) {
+	t.Helper()
+	if replaytest.ModeOf(t) == replaytest.Replay {
+		t.Skip(replayedUpgradeReason)
+	}
+}
+
+// The upgrade leg is the one leg no cassette holds, so the replay mode skips it and the two modes
+// that reach the account run it.
+func TestTheUpgradeRunsOutsideTheReplayMode(t *testing.T) {
+	for _, mode := range []replaytest.Mode{replaytest.Replay, replaytest.Record, replaytest.Live} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Setenv(replaytest.ModeVariable, string(mode))
+			var skipped bool
+			t.Run("the upgrade leg", func(t *testing.T) {
+				defer func() { skipped = t.Skipped() }()
+				skipTheUpgradeInReplay(t)
+			})
+			assert.Equal(t, mode == replaytest.Replay, skipped,
+				"the %s mode should decide the upgrade leg this way", mode)
+		})
+	}
+	assert.Contains(t, replayedUpgradeReason, string(replaytest.Replay),
+		"the reason a leg gives for a skip should name the mode that caused it")
+}
+
 // TestUpgradeFromTheReleasedProvider deploys with the released provider, then previews the same
 // stack with this build. A property this build renamed becomes a change the user already owns.
 func TestUpgradeFromTheReleasedProvider(t *testing.T) {
+	skipTheUpgradeInReplay(t)
 	baseline := upgradeBaseline(t)
 	key := requireAPIKey(t)
 	requireInboxBudget(t, upgradeProgram, 0)
 
-	templateName := newTestName(templateKind)
+	templateName := newTestName(t, nil, templateKind)
 	t.Cleanup(func() { sweepLeg(t, key, map[string]string{templateClass: templateName}) })
 
 	baselineDir := installBaselinePlugin(t, baseline)

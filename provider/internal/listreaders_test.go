@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 	"sort"
 	"testing"
 
@@ -11,34 +12,35 @@ import (
 // The list of readers the live probe walks, and the pin that keeps it whole. This file carries no
 // build tag, so the pin runs without a credential.
 
-// listReaderProbe is one kind's list reader, named for the message a failure carries.
+// listReaderProbe is one kind's list reader, named for the message a failure carries. The probe
+// takes the client of the calling test, so a replayed read answers from that test's cassette.
 type listReaderProbe struct {
 	kind string
-	read func(ctx context.Context, key string) error
+	read func(ctx context.Context, httpClient *http.Client, key string) error
 }
 
 // listReaderProbes is every reader the sweeps and the account checks depend on. A reader missing
 // here can break without any test noticing.
 func listReaderProbes() []listReaderProbe {
 	return []listReaderProbe{
-		{testInboxKind, func(ctx context.Context, key string) error {
-			_, err := listRecentInboxes(ctx, key, 0)
+		{testInboxKind, func(ctx context.Context, httpClient *http.Client, key string) error {
+			_, err := listRecentInboxes(ctx, httpClient, key, 0)
 			return err
 		}},
-		{testWebhookKind, func(ctx context.Context, key string) error {
-			_, err := listWebhooks(ctx, key, 0)
+		{testWebhookKind, func(ctx context.Context, httpClient *http.Client, key string) error {
+			_, err := listWebhooks(ctx, httpClient, key, 0)
 			return err
 		}},
-		{testRulesetKind, func(ctx context.Context, key string) error {
-			_, err := listRulesets(ctx, key, 0)
+		{testRulesetKind, func(ctx context.Context, httpClient *http.Client, key string) error {
+			_, err := listRulesets(ctx, httpClient, key, 0)
 			return err
 		}},
-		{testTemplateKind, func(ctx context.Context, key string) error {
-			_, err := listTemplates(ctx, key, 0)
+		{testTemplateKind, func(ctx context.Context, httpClient *http.Client, key string) error {
+			_, err := listTemplates(ctx, httpClient, key, 0)
 			return err
 		}},
-		{testForwarderKind, func(ctx context.Context, key string) error {
-			_, err := listForwarders(ctx, key, 0)
+		{testForwarderKind, func(ctx context.Context, httpClient *http.Client, key string) error {
+			_, err := listForwarders(ctx, httpClient, key, 0)
 			return err
 		}},
 	}

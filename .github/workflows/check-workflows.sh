@@ -55,6 +55,23 @@ lint_job() { # lint_job <file>: print the body of the lint job
 	awk '/^  lint:$/ {inside = 1; next} inside && /^  [a-z_]+:$/ {exit} inside' "$1"
 }
 
+# job_body <file> <job>: print the header and the body of one job. A step of another job runs on
+# another runner, so a scan of the whole file would accept a gate that sits anywhere in it.
+job_body() {
+	python3 - "$1" "$2" <<'PY'
+import sys
+path, job = sys.argv[1], sys.argv[2]
+lines = open(path).read().splitlines()
+start = next((i for i, l in enumerate(lines) if l.startswith(f'  {job}:')), None)
+if start is None:
+    sys.exit(1)
+end = next((i for i in range(start + 1, len(lines))
+            if lines[i].startswith('  ') and not lines[i].startswith('   ') and lines[i].strip()),
+           len(lines))
+print('\n'.join(lines[start:end]))
+PY
+}
+
 echo "== 1. files exist =="
 echo "scanned $(printf '%s' "$WORKFLOWS" | wc -w | tr -d ' ') workflow files: $WORKFLOWS"
 # -s not -f: an empty file passes every grep-for-absence check below.
@@ -214,18 +231,50 @@ for s in $secrets; do
 	esac
 done
 gate="github.event.pull_request.head.repo.full_name == github.repository"
-for job in test_examples integration; do
-	python3 - "$WF/pull-request.yml" "$job" "$gate" <<'PY'
-import sys
-path, job, gate = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = open(path).read().splitlines()
-start = next((i for i, l in enumerate(lines) if l.startswith(f'  {job}:')), None)
-if start is None:
-    sys.exit(1)
-end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('  ') and not lines[i].startswith('   ') and lines[i].strip()), len(lines))
-sys.exit(0 if gate in '\n'.join(lines[start:end]) else 1)
-PY
+for job in test_examples_live integration_live; do
+	job_body "$WF/pull-request.yml" "$job" | grep -qF "$gate"
 	check "pull-request.yml job $job is credential gated" $?
+	job_body "$WF/pull-request.yml" "$job" | grep -qF "run-live-tests"
+	check "pull-request.yml job $job waits for the run-live-tests label" $?
+done
+
+# A replay job runs on every pull request, a fork pull request included. It reads recorded traffic,
+# so a secret there buys nothing, and a gate there would hide the one run that proves the suite.
+for f in pull-request.yml main.yml; do
+	for job in test_examples integration; do
+		body="$(job_body "$WF/$f" "$job")"
+		read_lines="$(printf '%s\n' "$body" | grep -c . | tr -d ' ')"
+		[ "$read_lines" -gt 5 ]
+		check "$f: the $job job body read $read_lines lines" $?
+		if printf '%s\n' "$body" | grep -q 'secrets\.'; then
+			fail "$f job $job reads a secret; a replay run needs no vendor account"
+		else
+			pass "$f job $job reads no secret"
+		fi
+	done
+	# The other half of the same rule: the rename must leave the key on the live jobs.
+	for job in test_examples_live integration_live; do
+		job_body "$WF/$f" "$job" | grep -q 'secrets\.MAILSLURP_API_KEY'
+		check "$f: the $job job reads the API key secret" $?
+	done
+done
+
+# The replay job runs the replay target and the live job runs the live one. A rename that reached
+# the job name and left the recipe behind would run the wrong suite under the wrong gate.
+for f in pull-request.yml main.yml; do
+	for pair in test_examples:test_examples integration:test_integration \
+		test_examples_live:test_examples_live integration_live:test_integration_live; do
+		job="${pair%%:*}"
+		target="${pair##*:}"
+		# The step line, not the job body: the guard step of an integration job prints the
+		# target name in its message, so a scan of the body would read that text as the run.
+		job_body "$WF/$f" "$job" | grep -qE "run: make $target( |\$)"
+		check "$f: job $job runs make $target" $?
+	done
+done
+for target in test_integration_live test_examples_live; do
+	uncommented <"$WF/acceptance-tests.yml" | grep -qE "run: make $target( |\$)"
+	check "acceptance-tests.yml runs make $target" $?
 done
 grep -q 'coverprofile' "$WF/pull-request.yml"
 check "pull-request.yml wires a coverage profile" $?
@@ -303,6 +352,18 @@ for f in pull-request.yml main.yml acceptance-tests.yml; do
 	# Without the third argument the gate fails the allowed skips too, so the wiring is asserted.
 	uncommented <"$WF/$f" 2>/dev/null | grep 'check-tests-ran.sh.*scripts/tests-allowed-to-skip.txt' >/dev/null
 	check "$f hands the gate the allowed-skips file" $?
+done
+
+# The gate belongs to each integration job, not to the file. A replay run fails loudly on a missing
+# cassette, and a job that never read its log back would report a pass on a suite that ran nothing.
+for f in pull-request.yml main.yml; do
+	for job in integration integration_live; do
+		body="$(job_body "$WF/$f" "$job" | uncommented)"
+		printf '%s\n' "$body" | grep -q 'check-tests-ran.sh.*scripts/tests-allowed-to-skip.txt'
+		check "$f: job $job hands the gate the allowed-skips file" $?
+		printf '%s\n' "$body" | grep -q 'tags=integration -list'
+		check "$f: job $job lists the tests the integration tag adds" $?
+	done
 done
 
 if [ -x "$GATE" ]; then

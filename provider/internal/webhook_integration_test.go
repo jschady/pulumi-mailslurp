@@ -21,7 +21,10 @@ const lifecycleWebhookHost = "https://example.com/"
 // The webhook tests own the account for the run, and they start from a clean slate.
 func TestTheAccountHoldsNoWebhooks(t *testing.T) {
 	key := requireAPIKey(t)
-	count, err := countWebhooks(context.Background(), key)
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
+	count, err := countWebhooks(context.Background(), fx.Client(), key)
 	require.NoError(t, err)
 	assert.Zero(t, count, "the account must hold no webhook before the webhook tests run")
 }
@@ -46,13 +49,13 @@ func deleteWebhookAfterTheTest(t *testing.T, client Client, id string) {
 // the event name of a webhook without an inbox. This goes red first if MailSlurp drops the check.
 func TestTheAPIRefusesAnAccountWebhookUpdateThatKeepsTheURLAndTheEvent(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
-	client, err := NewClient(defaultBaseURL, key)
-	require.NoError(t, err)
+	client := theClient(t, fx, key)
 	ctx := context.Background()
 
-	name := newTestName(testWebhookKind)
-	renamed := newTestName(testWebhookKind)
+	name := recordedName(fx, testWebhookKind)
+	renamed := recordedName(fx, testWebhookKind)
 	options := func(url, webhookName string) WebhookOptions {
 		return WebhookOptions{
 			URL:       url,
@@ -112,11 +115,12 @@ func headerValue(t *testing.T, output property.Map, name string) string {
 // the inbox budget. It moves the webhook onto the shared inbox.
 func TestWebhookLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 
-	name := newTestName(testWebhookKind)
-	renamed := newTestName(testWebhookKind)
+	name := recordedName(fx, testWebhookKind)
+	renamed := recordedName(fx, testWebhookKind)
 	target := lifecycleWebhookHost + name
 	movedTarget := target + "-updated"
 	const headerName = "x-pulumi-test-signature"
@@ -127,8 +131,8 @@ func TestWebhookLifeCycle(t *testing.T) {
 	// value it did not capture, and it tolerates a webhook that is already gone.
 	t.Cleanup(func() {
 		ctx := context.WithoutCancel(context.Background())
-		webhookSweeper.sweepMarked(ctx, key, name)
-		webhookSweeper.sweepMarked(ctx, key, renamed)
+		webhookSweeper.sweepMarked(ctx, fx.Client(), key, name)
+		webhookSweeper.sweepMarked(ctx, fx.Client(), key, renamed)
 	})
 
 	type wanted struct {
@@ -250,7 +254,10 @@ func TestWebhookLifeCycle(t *testing.T) {
 // The suite must leave the account as it found it, and the lifecycle test deletes its webhook.
 func TestTheAccountHoldsNoWebhookAfterTheLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
-	count, err := countWebhooks(context.Background(), key)
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
+	count, err := countWebhooks(context.Background(), fx.Client(), key)
 	require.NoError(t, err)
 	assert.Zero(t, count, "the webhook tests left a webhook behind")
 }

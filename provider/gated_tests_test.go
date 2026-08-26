@@ -15,8 +15,12 @@ const (
 	acceptanceCommand  = "/run-acceptance-tests"
 	liveTestsLabel     = "run-live-tests"
 	jobCondition       = "\n    if:"
-	exampleJob         = "test_examples"
-	integrationJob     = "integration"
+	// The jobs that spend the vendor account. A run of these needs the key and the label.
+	exampleJob     = "test_examples_live"
+	integrationJob = "integration_live"
+	// The jobs that replay recorded traffic. These run on every pull request and read no key.
+	replayExampleJob     = "test_examples"
+	replayIntegrationJob = "integration"
 )
 
 // The jobs that read the API key, plus the sentinel that only waits for the others.
@@ -145,6 +149,18 @@ func TestTheLiveJobsNeedTheLabelOnAPullRequest(t *testing.T) {
 				assert.Containsf(t, condition, required,
 					"the %s gate never reads %s:\n%s", job, required, condition)
 			}
+		})
+	}
+
+	// The other half of the same rule. The replay jobs read recorded traffic, so the label and
+	// the key belong to neither of them, and a gate there would skip the run that proves the suite.
+	for _, job := range []string{replayExampleJob, replayIntegrationJob} {
+		t.Run(job, func(t *testing.T) {
+			replay := workflowJobBody(t, pullRequestWorkflow, job)
+			assert.NotContainsf(t, replay, liveTestsLabel,
+				"the %s job waits for the live-tests label, so it skips without one", job)
+			assert.NotContainsf(t, replay, credentialSecret,
+				"the %s job reads the API key, and recorded traffic needs none", job)
 		})
 	}
 }

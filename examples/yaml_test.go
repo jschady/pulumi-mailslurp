@@ -4,6 +4,7 @@ package examples
 
 import (
 	"encoding/json"
+	"net/http"
 	"path/filepath"
 	"testing"
 
@@ -17,7 +18,8 @@ import (
 // creates an inbox, and the complete program this account plan cannot deploy.
 
 func TestTheBaseProgramInYaml(t *testing.T) {
-	opts := baseOptions(t).With(baseProgramOptions(t, baseSource))
+	fixture := recorderFor(t)
+	opts := baseOptions(t).With(baseProgramOptions(t, fixture, baseSource))
 	opts = opts.With(integration.ProgramTestOptions{
 		EditDirs: []integration.EditDir{{
 			Dir:                    filepath.Join(cwd(t), "base-update"),
@@ -25,7 +27,7 @@ func TestTheBaseProgramInYaml(t *testing.T) {
 			ExtraRuntimeValidation: requireTheUpdatedTemplate,
 		}},
 	})
-	runProgram(t, opts)
+	runProgram(t, fixture, opts)
 }
 
 // requireTheUpdatedTemplate reads the update leg. The added variable proves the engine sent the
@@ -40,11 +42,12 @@ func requireTheUpdatedTemplate(t *testing.T, stack integration.RuntimeValidation
 // TestTheInboxProgram is the one leg that creates an inbox. The description change is an update
 // that no property forces a replacement for, so the leg pays for exactly one inbox.
 func TestTheInboxProgram(t *testing.T) {
+	fixture := recorderFor(t)
 	key := requireAPIKey(t)
 	requireInboxBudget(t, "inbox", 1)
 
-	name := newTestName(inboxKind)
-	t.Cleanup(func() { sweepLeg(t, key, map[string]string{inboxClass: name}) })
+	name := newTestName(t, fixture.Seed(), inboxKind)
+	t.Cleanup(func() { sweepLegThrough(t, fixture.Client(), key, map[string]string{inboxClass: name}) })
 
 	var created string
 	opts := baseOptions(t).With(integration.ProgramTestOptions{
@@ -53,28 +56,30 @@ func TestTheInboxProgram(t *testing.T) {
 		ExtraRuntimeValidation: func(t *testing.T, stack integration.RuntimeValidationStackInfo) {
 			surveyTheAccount(t, key, "while the inbox program is deployed")
 			chargeInboxes(t, countInboxResources(stack), "inbox")
-			created = requireTheInboxOnTheAccount(t, stack, key, "The inbox this program creates")
+			created = requireTheInboxOnTheAccount(t, fixture.Client(), stack, key,
+				"The inbox this program creates")
 		},
 		EditDirs: []integration.EditDir{{
 			Dir:      filepath.Join(cwd(t), "inbox-update"),
 			Additive: true,
 			ExtraRuntimeValidation: func(t *testing.T, stack integration.RuntimeValidationStackInfo) {
-				updated := requireTheInboxOnTheAccount(t, stack, key, "The inbox this program updated")
+				updated := requireTheInboxOnTheAccount(t, fixture.Client(), stack, key,
+					"The inbox this program updated")
 				assert.Equal(t, created, updated,
 					"the description change is an update, so the inbox keeps its identifier")
 			},
 		}},
 	})
-	runProgram(t, opts)
+	runProgram(t, fixture, opts)
 }
 
 // requireTheInboxOnTheAccount reads the deployed inbox back from MailSlurp and answers its id.
-func requireTheInboxOnTheAccount(t *testing.T, stack integration.RuntimeValidationStackInfo,
-	key, wantDescription string,
+func requireTheInboxOnTheAccount(t *testing.T, client *http.Client,
+	stack integration.RuntimeValidationStackInfo, key, wantDescription string,
 ) string {
 	t.Helper()
 	inboxID := requireStringOutput(t, stack, "inboxId")
-	body := requireObjectExists(t, key, "/inboxes/"+inboxID, "inbox")
+	body := requireObjectExists(t, client, key, "/inboxes/"+inboxID, "inbox")
 
 	var read struct {
 		Description  *string `json:"description"`
@@ -91,18 +96,19 @@ func requireTheInboxOnTheAccount(t *testing.T, stack integration.RuntimeValidati
 // TestTheCompleteProgram deploys every resource and both functions. It runs on an account whose
 // plan carries the inbox forwarder and that holds a domain, and skips loudly on any other.
 func TestTheCompleteProgram(t *testing.T) {
+	fixture := recorderFor(t)
 	key := requireAPIKey(t)
-	requireTheCompletePreconditions(t, key, theSharedInbox(t))
+	requireTheCompletePreconditions(t, fixture, key, theSharedInbox(t))
 	requireInboxBudget(t, completeSource, 1)
 
-	inboxName := newTestName(inboxKind)
-	webhookName := newTestName(webhookKind)
-	rulesetTarget := rulesetTargetFor(newTestName(rulesetKind))
-	templateName := newTestName(templateKind)
-	recipient := forwarderRecipientFor(newTestName(forwarderKind))
+	inboxName := newTestName(t, fixture.Seed(), inboxKind)
+	webhookName := newTestName(t, fixture.Seed(), webhookKind)
+	rulesetTarget := rulesetTargetFor(newTestName(t, fixture.Seed(), rulesetKind))
+	templateName := newTestName(t, fixture.Seed(), templateKind)
+	recipient := forwarderRecipientFor(newTestName(t, fixture.Seed(), forwarderKind))
 
 	t.Cleanup(func() {
-		sweepLeg(t, key, map[string]string{
+		sweepLegThrough(t, fixture.Client(), key, map[string]string{
 			inboxClass: inboxName, webhookClass: webhookName, rulesetClass: rulesetTarget,
 			templateClass: templateName, forwarderClass: recipient,
 		})
@@ -113,16 +119,17 @@ func TestTheCompleteProgram(t *testing.T) {
 		Config: map[string]string{
 			"inboxName": inboxName, "webhookName": webhookName, "webhookUrl": webhookURLFor(webhookName),
 			"rulesetTarget": rulesetTarget, "templateName": templateName,
-			"forwarderRecipient": recipient, "domainId": theFirstDomainID(t, key),
+			"forwarderRecipient": recipient,
+			"domainId":           theFirstDomainID(t, fixture.Client(), key),
 		},
 		ExtraRuntimeValidation: func(t *testing.T, stack integration.RuntimeValidationStackInfo) {
 			surveyTheAccount(t, key, "while the complete program is deployed")
 			chargeInboxes(t, countInboxResources(stack), completeSource)
-			requireObjectExists(t, key,
+			requireObjectExists(t, fixture.Client(), key,
 				"/forwarders/"+requireStringOutput(t, stack, "forwarderId"), "forwarder")
 			assert.NotEmpty(t, requireStringOutput(t, stack, "domainName"),
 				"the domain function should answer the name of the domain")
 		},
 	})
-	runProgram(t, opts)
+	runProgram(t, fixture, opts)
 }

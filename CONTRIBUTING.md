@@ -62,17 +62,49 @@ The prose check runs separately:
 make lint_prose
 ```
 
+## Test modes
+
+The example tests and the integration tests run in 3 modes. The `MAILSLURP_TEST_MODE` variable
+picks one, and an unset variable means `replay`.
+
+| Mode | The example tests | The integration tests | The API key |
+| --- | --- | --- | --- |
+| `replay` | `make test_examples` | `make test_integration` | none |
+| `record` | `make record_examples` | `make record_integration` | required |
+| `live` | `make test_examples_live` | `make test_integration_live` | required |
+
+- In `replay` the recorded cassettes answer every call, so the run reaches no account.
+- In `record` MailSlurp answers, and the run writes one cassette for each test.
+- In `live` MailSlurp answers and the run writes nothing.
+
+Every pull request runs the replay targets. A missing cassette fails the test and names both the
+file and the target that records it.
+
+## Record the fixtures
+
+Recording calls MailSlurp, and it spends the account.
+
+**Warning:** If you point `MAILSLURP_API_KEY` at an account that holds real mail, a failed run can
+leave objects behind. Use an empty account.
+
+1. Export the API key: `export MAILSLURP_API_KEY=your-api-key`.
+2. Run `make record_integration` to write the cassettes of the integration tests.
+3. Run `make record_examples` to write the cassettes of the example programs.
+
+Each run writes one cassette and one seed file for each test. Commit both files with the change
+that produced them. The scrub drops the API key header before a cassette reaches the disk.
+
 ## Live tests
 
-The integration tests call the real API. They create objects in the account of the key, and they
-delete each one again.
+The live targets call the real API and read no cassette. They create objects in the account of the
+key, and they delete each one again.
 
 **Warning:** If you point `MAILSLURP_API_KEY` at an account that holds real mail, a failed test can
 leave objects behind. Use an empty account.
 
 ```bash
 export MAILSLURP_API_KEY=your-api-key
-make test_integration
+make test_integration_live
 ```
 
 An inbox costs money, so the tests share one inbox and count every creation. A run that would

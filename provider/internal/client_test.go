@@ -215,3 +215,52 @@ func TestClientSourceNeverNamesTheSearchFilterParameter(t *testing.T) {
 	}
 	require.Equal(t, 11, checked, "the client is 11 source files")
 }
+
+// countingTransport counts the requests it passes on, which is what a recorder does.
+type countingTransport struct {
+	mu       sync.Mutex
+	requests int
+}
+
+func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.mu.Lock()
+	c.requests++
+	c.mu.Unlock()
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+func (c *countingTransport) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.requests
+}
+
+// NewClientWith puts one transport in front of every call. A test records or replays the calls
+// the provider makes by handing its own transport to this constructor.
+func TestNewClientWithSendsEveryCallThroughTheGivenTransport(t *testing.T) {
+	counted := &countingTransport{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", clientTestJSONType)
+		_, _ = io.WriteString(w, `{"id":"`+clientTestInboxID+`"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := NewClientWith(server.URL, clientTestKey, counted)
+	require.NoError(t, err)
+
+	_, err = c.GetInbox(t.Context(), clientTestInboxID)
+	require.NoError(t, err)
+	require.Equal(t, 1, counted.count(), "every call must go through the given transport")
+}
+
+func TestNewClientWithKeepsTheEndpointRulesOfNewClient(t *testing.T) {
+	_, err := NewClientWith("http://a b c", clientTestKey, http.DefaultTransport)
+	require.Error(t, err, "an endpoint that is not a URL must fail here too")
+}
+
+// NewClient must keep the transport of the standard library, which is what production runs on.
+func TestNewClientLeavesTheTransportToTheStandardLibrary(t *testing.T) {
+	c, err := newClient("", clientTestKey)
+	require.NoError(t, err)
+	require.Nil(t, c.http.Transport, "NewClient must add no transport of its own")
+}

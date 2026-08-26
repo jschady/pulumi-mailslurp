@@ -28,12 +28,13 @@ type createdObject struct {
 // creates no inbox: MailSlurp bills each one and the suite already spends the whole budget.
 func TestOneSessionHoldsOneOfEveryResource(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
 	guardTheInboxBudget(t)
 
 	// One session for every leg below. A resource that held its own configuration would answer the
 	// not-configured diagnostic here instead of reaching MailSlurp.
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 
 	// The Inbox reaches the same client. The suite creates no sixth inbox, so this leg reads the
 	// shared one rather than building another.
@@ -47,19 +48,19 @@ func TestOneSessionHoldsOneOfEveryResource(t *testing.T) {
 	assert.Equal(t, sharedInboxID, read.ID)
 	assert.Contains(t, read.Properties.Get(inboxPropEmailAddress).AsString(), "@")
 
-	webhookName := newTestName(testWebhookKind)
-	rulesetTarget := rulesetTargetFor(newTestName(testRulesetKind))
-	templateName := newTestName(testTemplateKind)
-	forwarderRecipient := forwarderRecipientFor(newTestName(testForwarderKind))
+	webhookName := recordedName(fx, testWebhookKind)
+	rulesetTarget := rulesetTargetFor(recordedName(fx, testRulesetKind))
+	templateName := recordedName(fx, testTemplateKind)
+	forwarderRecipient := forwarderRecipientFor(recordedName(fx, testForwarderKind))
 
 	// Every sweep is registered before its create, so an object the vendor built and then reported
 	// as a failure is still removed. Each sweep matches the run pattern and nothing wider.
 	t.Cleanup(func() {
 		ctx := context.WithoutCancel(context.Background())
-		webhookSweeper.sweepMarked(ctx, key, webhookName)
-		rulesetSweeper.sweepMarked(ctx, key, rulesetTarget)
-		templateSweeper.sweepMarked(ctx, key, templateName)
-		forwarderSweeper.sweepMarked(ctx, key, forwarderRecipient)
+		webhookSweeper.sweepMarked(ctx, fx.Client(), key, webhookName)
+		rulesetSweeper.sweepMarked(ctx, fx.Client(), key, rulesetTarget)
+		templateSweeper.sweepMarked(ctx, fx.Client(), key, templateName)
+		forwarderSweeper.sweepMarked(ctx, fx.Client(), key, forwarderRecipient)
 	})
 
 	// session carries the cleanups, so a leg that runs as a subtest keeps its object until the end.
@@ -148,19 +149,19 @@ func TestOneSessionHoldsOneOfEveryResource(t *testing.T) {
 	}
 
 	// The account must hold nothing of this run.
-	count, err := countWebhooks(context.Background(), key)
+	count, err := countWebhooks(context.Background(), fx.Client(), key)
 	require.NoError(t, err)
 	assert.Zero(t, count, "the session left a webhook behind")
 
-	rulesetIDs, err := rulesetIDsTargeting(context.Background(), key, rulesetTarget)
+	rulesetIDs, err := rulesetIDsTargeting(context.Background(), fx.Client(), key, rulesetTarget)
 	require.NoError(t, err)
 	assert.Empty(t, rulesetIDs, "the session left a ruleset behind")
 
-	templateIDs, err := templateIDsNamed(context.Background(), key, templateName)
+	templateIDs, err := templateIDsNamed(context.Background(), fx.Client(), key, templateName)
 	require.NoError(t, err)
 	assert.Empty(t, templateIDs, "the session left a template behind")
 
-	forwarderIDs, err := forwarderIDsSendingTo(context.Background(), key, forwarderRecipient)
+	forwarderIDs, err := forwarderIDsSendingTo(context.Background(), fx.Client(), key, forwarderRecipient)
 	require.NoError(t, err)
 	assert.Empty(t, forwarderIDs, "the session left a forwarder behind")
 }

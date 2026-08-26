@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
 )
 
 // The reader this package uses to watch the account. The provider tests keep their own copy of
@@ -57,12 +58,48 @@ const (
 	forwarderClass = "forwarders"
 )
 
-// newTestName builds a collision-free object name. crypto/rand.Read fills the buffer or panics
-// inside the runtime, so it reports no error worth handling.
-func newTestName(kind string) string {
-	var raw [4]byte
+// callsTheAccount reports whether this run reaches the MailSlurp API. A replay reads a cassette
+// and sends nothing, so the sweeps and the surveys of the account do nothing there.
+func callsTheAccount() bool {
+	mode, err := replaytest.ReadMode()
+	return err == nil && mode != replaytest.Replay
+}
+
+// attachesInProcess reports whether the legs run the provider this test process serves. Replay and
+// record hand that provider the recorder of the leg, and live runs the installed plugin.
+func attachesInProcess() bool {
+	mode, err := replaytest.ReadMode()
+	return err == nil && mode != replaytest.Live
+}
+
+// newTestName builds a collision-free object name. A test that reads a cassette hands the seed of
+// its recording, so the name it draws is the name the recording carries.
+func newTestName(t *testing.T, seed *replaytest.Source, kind string) string {
+	t.Helper()
+	if seed == nil {
+		seed = freshSeed(t)
+	}
+	return nameFromSeed(seed, kind)
+}
+
+// nameFromSeed builds one object name from one seed. The suite names the inbox its programs share
+// this way, because that name belongs to a cassette rather than to a test.
+func nameFromSeed(seed *replaytest.Source, kind string) string {
+	return testNamePrefix + kind + "-" + seed.Hex(4)
+}
+
+// freshSeed answers a source no cassette holds, for a test that replays nothing. It reads the mode
+// first, so a run that names no mode fails at the first name rather than at the first call.
+// crypto/rand.Read fills the buffer or panics inside the runtime, so it reports no error worth
+// handling.
+func freshSeed(t *testing.T) *replaytest.Source {
+	t.Helper()
+	if _, err := replaytest.ReadMode(); err != nil {
+		t.Fatal(err)
+	}
+	var raw [16]byte
 	_, _ = rand.Read(raw[:])
-	return testNamePrefix + kind + "-" + hex.EncodeToString(raw[:])
+	return replaytest.NewSource(raw[:])
 }
 
 // A ruleset and a forwarder carry no name of their own, so the run marker rides the one property
@@ -72,9 +109,23 @@ func forwarderRecipientFor(name string) string { return name + "@example.com" }
 
 func apiKey() string { return os.Getenv(apiKeyVariable) }
 
-// requireAPIKey skips the calling test when the credential is absent, and names the variable.
+// noAccountKey stands in for the credential of a replayed run. The engine asks the provider for a
+// key, the recorder answers every call from the cassette, and the account issues no such value.
+//
+//nolint:gosec // G101: this is a placeholder, and no account issues it.
+const noAccountKey = "the-replay-mode-holds-no-key"
+
+// requireAPIKey answers the credential this run uses. A replay sends nothing, so it answers the
+// placeholder and puts it in the environment: the provider refuses an empty key before it sends
+// the first call, and a replay that carried none would never reach the recorder. The value is put
+// back when the calling test ends. A record and a live run reach the account, so an empty key skips
+// the calling test.
 func requireAPIKey(t *testing.T) string {
 	t.Helper()
+	if !callsTheAccount() {
+		t.Setenv(apiKeyVariable, noAccountKey)
+		return noAccountKey
+	}
 	key := apiKey()
 	if key == "" {
 		t.Skipf("set %s to run the example programs", apiKeyVariable)
@@ -82,8 +133,14 @@ func requireAPIKey(t *testing.T) string {
 	return key
 }
 
-// apiCall sends one request to the MailSlurp API and answers the status and the body.
-func apiCall(ctx context.Context, key, method, path string, query url.Values, body []byte,
+// vendorClient answers the client of a call no cassette holds. The sweeps and the surveys run in
+// the record mode and the live mode alone, and a replay never reaches them.
+func vendorClient() *http.Client { return &http.Client{Timeout: callTimeout} }
+
+// apiCall sends one request to the MailSlurp API and answers the status and the body. The caller
+// hands the client, so a recorded test sends every call of this package through its own recorder.
+func apiCall(ctx context.Context, client *http.Client, key, method, path string, query url.Values,
+	body []byte,
 ) (int, []byte, error) {
 	address := baseURL + path
 	if len(query) > 0 {
@@ -102,7 +159,7 @@ func apiCall(ctx context.Context, key, method, path string, query url.Values, bo
 	req.Header.Set(apiKeyHeader, key)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := (&http.Client{Timeout: callTimeout}).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -216,8 +273,9 @@ func accountClasses() []objectClass {
 }
 
 // list reads one page of one class.
-func (class objectClass) list(ctx context.Context, key string) ([]objectEntry, error) {
-	status, body, err := apiCall(ctx, key, http.MethodGet, class.path, class.query(), nil)
+func (class objectClass) list(ctx context.Context, client *http.Client, key string,
+) ([]objectEntry, error) {
+	status, body, err := apiCall(ctx, client, key, http.MethodGet, class.path, class.query(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -240,13 +298,32 @@ func (class objectClass) list(ctx context.Context, key string) ([]objectEntry, e
 	return page.Content, nil
 }
 
-// sweepMarked deletes every entry of one class that carries exactly this marker, and answers how
-// many it removed. A blank identifier reaches the whole collection, so it is never deleted.
+// sweepMarked deletes every entry of one class for a caller that no cassette holds: the teardown of
+// the suite and the leg that runs outside the replay mode. A replay reaches no account, so it
+// removes nothing. A sweep a test registers takes sweepMarkedThrough instead.
 func (class objectClass) sweepMarked(ctx context.Context, key, marker string) int {
 	if marker == "" {
 		return 0
 	}
-	entries, err := class.list(ctx, key)
+	if !callsTheAccount() {
+		fmt.Fprintf(os.Stderr, "the replay mode reads a cassette, so the %s are not swept\n",
+			class.name)
+		return 0
+	}
+	return class.sweepMarkedThrough(ctx, vendorClient(), key, marker)
+}
+
+// sweepMarkedThrough deletes every entry of one class that carries exactly this marker, and answers
+// how many it removed. A blank identifier reaches the whole collection, so it is never deleted. The
+// caller hands the client of its test: a cleanup a test registers runs before that test's recorder
+// stops, so a record run puts these calls in the cassette and a replay sends them again.
+func (class objectClass) sweepMarkedThrough(ctx context.Context, client *http.Client,
+	key, marker string,
+) int {
+	if marker == "" {
+		return 0
+	}
+	entries, err := class.list(ctx, client, key)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "the sweep could not list the %s: %v\n", class.name, err)
 		return 0
@@ -260,7 +337,7 @@ func (class objectClass) sweepMarked(ctx context.Context, key, marker string) in
 		if path == "" {
 			continue
 		}
-		status, _, err := apiCall(ctx, key, http.MethodDelete, path, nil, nil)
+		status, _, err := apiCall(ctx, client, key, http.MethodDelete, path, nil, nil)
 		if err != nil || (status != http.StatusOK && status != http.StatusNoContent &&
 			status != http.StatusNotFound) {
 			fmt.Fprintf(os.Stderr, "the sweep could not delete a %s: %v %d\n", class.name, err, status)
@@ -272,11 +349,17 @@ func (class objectClass) sweepMarked(ctx context.Context, key, marker string) in
 }
 
 // readAccount counts every class the account holds. One call reads all six, so a reader that
-// answered nothing at all is a failed run rather than an account that looks clean.
+// answered nothing at all is a failed run rather than an account that looks clean. No cassette
+// holds a survey, so a replay counts nothing and answers no map.
 func readAccount(ctx context.Context, key string) (map[string]int, error) {
+	if !callsTheAccount() {
+		fmt.Fprintln(os.Stderr, replayedSurveyLine)
+		return nil, nil
+	}
+	client := vendorClient()
 	counted := map[string]int{}
 	for _, class := range accountClasses() {
-		entries, err := class.list(ctx, key)
+		entries, err := class.list(ctx, client, key)
 		if err != nil {
 			return nil, err
 		}
@@ -292,10 +375,18 @@ func surveyLine(label string, counted map[string]int) string {
 		counted[rulesetClass], counted[templateClass], counted[forwarderClass])
 }
 
+// replayedSurveyLine says why a run counted nothing. A survey reads the whole account, and a
+// cassette holds the calls of one test.
+const replayedSurveyLine = "the replay mode reads a cassette, so this run surveys no account"
+
 // surveyTheAccount reads the account and writes the counts to the log of the calling leg, which is
-// what the evidence of a run carries.
+// what the evidence of a run carries. A replay reaches no account, so it counts nothing.
 func surveyTheAccount(t *testing.T, key, label string) map[string]int {
 	t.Helper()
+	if !callsTheAccount() {
+		t.Log(replayedSurveyLine)
+		return nil
+	}
 	counted, err := readAccount(context.Background(), key)
 	require.NoError(t, err, "every list of the account should be readable")
 	t.Log(surveyLine(label, counted))

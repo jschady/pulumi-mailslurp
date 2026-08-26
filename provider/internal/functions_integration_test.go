@@ -18,21 +18,24 @@ import (
 	"github.com/pulumi/pulumi-go-provider/integration"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/property"
+
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
 )
 
 // missingEntityID is a well-formed identifier that no MailSlurp account holds.
 const missingEntityID = "00000000-0000-0000-0000-000000000000"
 
 // listDomains reads the account domain list. The Client interface carries no list method by
-// design, so this test builds its own request rather than widening that surface.
-func listDomains(ctx context.Context, key string) ([]domainSummary, error) {
+// design, so this test builds its own request rather than widening that surface. The caller hands
+// it the recorder of the test, so the read reaches the cassette and not the account.
+func listDomains(ctx context.Context, httpClient *http.Client, key string) ([]domainSummary, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, defaultBaseURL+domainsPath, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set(apiKeyHeader, key)
 
-	resp, err := (&http.Client{Timeout: requestTimeout}).Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -50,9 +53,9 @@ func listDomains(ctx context.Context, key string) ([]domainSummary, error) {
 
 // accountDomainsOrSkip answers the domains the account holds. It skips the calling test only when
 // the account holds none, and prints the reason so a run without -v still reports the skip.
-func accountDomainsOrSkip(t *testing.T, key string) []domainSummary {
+func accountDomainsOrSkip(t *testing.T, fx *replaytest.Fixture, key string) []domainSummary {
 	t.Helper()
-	found, err := listDomains(context.Background(), key)
+	found, err := listDomains(context.Background(), fx.Client(), key)
 	require.NoError(t, err)
 	if reason := skipReasonForDomains(found); reason != "" {
 		fmt.Fprintf(os.Stderr, "SKIP %s: %s\n", t.Name(), reason)
@@ -73,14 +76,15 @@ func invokeFunction(t *testing.T, s integration.Server, name string, args proper
 // counts reach stderr, so a run reports the before and after state without -v.
 func TestNeitherFunctionChangesTheAccount(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
 	guardTheInboxBudget(t)
 
-	before := readAccount(t, key)
+	before := readAccount(t, fx, key)
 	fmt.Fprintf(os.Stderr, "before the function reads: %d domains, %d inboxes, %d webhooks\n",
 		len(before.Domains), len(before.Inboxes), len(before.Webhooks))
 
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 	invokeFunction(t, s, getInboxFunction, property.NewMap(map[string]property.Value{
 		inboxIDProperty: property.New(sharedInboxID),
 	}))
@@ -91,7 +95,7 @@ func TestNeitherFunctionChangesTheAccount(t *testing.T) {
 		}))
 	}
 
-	after := readAccount(t, key)
+	after := readAccount(t, fx, key)
 	fmt.Fprintf(os.Stderr, "after the function reads: %d domains, %d inboxes, %d webhooks\n",
 		len(after.Domains), len(after.Inboxes), len(after.Webhooks))
 	assert.Equal(t, before, after, "a read-only function changed the account")
@@ -101,10 +105,11 @@ func TestNeitherFunctionChangesTheAccount(t *testing.T) {
 // holds, so it grows with the account instead of naming a fixed domain.
 func TestGetDomainReadsTheDomainsTheAccountAlreadyHolds(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
-	before := accountDomainsOrSkip(t, key)
+	before := accountDomainsOrSkip(t, fx, key)
 
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 	for _, summary := range before {
 		result := invokeFunction(t, s, getDomainFunction, property.NewMap(map[string]property.Value{
 			domainIDProperty: property.New(summary.ID),
@@ -133,7 +138,7 @@ func TestGetDomainReadsTheDomainsTheAccountAlreadyHolds(t *testing.T) {
 		}
 	}
 
-	after, err := listDomains(context.Background(), key)
+	after, err := listDomains(context.Background(), fx.Client(), key)
 	require.NoError(t, err)
 	assert.Equal(t, before, after, "the reads changed the account domains")
 }
@@ -141,10 +146,11 @@ func TestGetDomainReadsTheDomainsTheAccountAlreadyHolds(t *testing.T) {
 // `checkForErrors` is optional on getDomain. The live call must answer the same domain either way.
 func TestGetDomainAcceptsCheckForErrorsAgainstALiveDomain(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
-	domains := accountDomainsOrSkip(t, key)
+	domains := accountDomainsOrSkip(t, fx, key)
 
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 	plain := invokeFunction(t, s, getDomainFunction, property.NewMap(map[string]property.Value{
 		domainIDProperty: property.New(domains[0].ID),
 	}))
@@ -161,17 +167,17 @@ func TestGetDomainAcceptsCheckForErrorsAgainstALiveDomain(t *testing.T) {
 // replaces the catch-all inbox of a verified domain, which this account does not hold.
 func TestGetInboxReadsAnInboxTheAccountAlreadyHolds(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
 	guardTheInboxBudget(t)
 
 	// The client read is the oracle. The account plan decides values such as `virtualInbox`, so the
 	// test compares the function against the API answer instead of naming a value.
-	client, err := NewClient(defaultBaseURL, key)
-	require.NoError(t, err)
+	client := theClient(t, fx, key)
 	dto, err := client.GetInbox(context.Background(), sharedInboxID)
 	require.NoError(t, err)
 
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 	result := invokeFunction(t, s, getInboxFunction, property.NewMap(map[string]property.Value{
 		inboxIDProperty: property.New(sharedInboxID),
 	}))
@@ -211,8 +217,9 @@ func TestGetInboxReadsAnInboxTheAccountAlreadyHolds(t *testing.T) {
 // diagnostic that names the value to check.
 func TestBothFunctionsReportTheActionableErrorAgainstTheLiveAPI(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
-	s := configuredServer(t, key)
+	s := configuredServer(t, fx, key)
 
 	_, err := s.Invoke(p.InvokeRequest{
 		Token: tokens.Type(getInboxFunction),

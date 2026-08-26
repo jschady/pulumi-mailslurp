@@ -313,17 +313,18 @@ func TestTheSuiteEncryptsTheStateWithAPassphraseOfItsOwn(t *testing.T) {
 }
 
 // The names this package builds are the ones the sweeps of the provider tests match, so an object
-// a failed run leaves behind is still removed.
+// a failed run leaves behind is still removed. This test deploys nothing and replays nothing, so
+// it hands no seed and draws fresh bytes.
 func TestTheObjectNamesCarryTheSweepMarker(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []string{inboxKind, webhookKind, rulesetKind, templateKind, forwarderKind} {
-		name := newTestName(kind)
+		name := newTestName(t, nil, kind)
 		assert.Regexpf(t, `^pulumi-test-`+kind+`-[0-9a-f]{8}$`, name, "the %s name", kind)
 	}
 	assert.Regexp(t, `^\*@pulumi-test-ruleset-[0-9a-f]{8}\.example\.com$`,
-		rulesetTargetFor(newTestName(rulesetKind)))
+		rulesetTargetFor(newTestName(t, nil, rulesetKind)))
 	assert.Regexp(t, `^pulumi-test-forwarder-[0-9a-f]{8}@example\.com$`,
-		forwarderRecipientFor(newTestName(forwarderKind)))
+		forwarderRecipientFor(newTestName(t, nil, forwarderKind)))
 }
 
 // A program that declares an inbox costs money, so the count is read before the program runs.

@@ -15,8 +15,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/pulumi/providertest/providers"
 	"github.com/pulumi/pulumi/pkg/v3/testing/integration"
+	rpc "github.com/pulumi/pulumi/sdk/v3/proto/go"
+
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
+	"github.com/jschady/pulumi-mailslurp/provider"
 )
 
 // The suite entry point, the one shared inbox and the budget that counts every inbox a run creates.
@@ -90,66 +96,125 @@ func requireInboxBudget(t *testing.T, program string, want int64) {
 		"the %s program should declare %d inboxes", program, want)
 }
 
+// sharedInboxCassette names the cassette the shared inbox belongs to. Whichever leg asks for the
+// inbox first causes the create, so those calls belong to the suite and not to that leg. A leg the
+// run filters out then still finds the inbox, because it reads a cassette of its own name.
+const sharedInboxCassette = "SharedInbox"
+
+// theVendorTransport is the transport of the process. A record run of the shared inbox sends
+// through it, and the teardown that removes the inbox names it too.
+var theVendorTransport = http.DefaultTransport
+
 // sharedInbox is the one inbox the programs that attach to an inbox all reuse. It is built the
 // first time a leg asks, so a run that asks for none pays for none.
-var sharedInbox struct {
-	once sync.Once
+var sharedInbox = struct {
+	// once builds the inbox one time in the process. It is a pointer, so the proof that reads
+	// what the suite hands the builder can give the suite a fresh one and put this one back.
+	once *sync.Once
 	id   string
 	// name is set before the create, so an inbox the API made and then reported as a failure is
 	// still swept in teardown.
 	name string
 	err  error
-}
+}{once: new(sync.Once)}
 
+// theSharedInboxBuilder is the builder the suite calls. A proof replaces it to read the cassette
+// directory and the transport the suite hands the builder, and puts it back when it ends.
+var theSharedInboxBuilder = buildTheSharedInbox
+
+// theSharedInboxFixture holds the recorder of the cassette the shared inbox belongs to. A run that
+// asked for no inbox builds none, and the suite then closes nothing.
+var theSharedInboxFixture *replaytest.Fixture
+
+// theSharedInbox answers the shared inbox, building it on first use.
 func theSharedInbox(t *testing.T) string {
 	t.Helper()
 	key := requireAPIKey(t)
-	sharedInbox.once.Do(func() { buildTheSharedInbox(t, key) })
+	mode := replaytest.ModeOf(t)
+	// The suite hands the builder the cassette directory of this package and the transport of the
+	// process, so the create belongs to the suite and not to the leg that asked for it first.
+	sharedInbox.once.Do(func() {
+		chargeInboxes(t, 1, "shared inbox")
+		theSharedInboxFixture, sharedInbox.name, sharedInbox.id, sharedInbox.err =
+			theSharedInboxBuilder(mode, key, cassetteDir, theVendorTransport)
+	})
 	require.NoError(t, sharedInbox.err, "the suite could not create the shared inbox")
 	require.NotEmpty(t, sharedInbox.id, "the create of the shared inbox answered no identifier")
 	return sharedInbox.id
 }
 
-func buildTheSharedInbox(t *testing.T, key string) {
-	t.Helper()
-	sharedInbox.name = newTestName(inboxKind)
-	chargeInboxes(t, 1, "shared inbox")
-
-	body, err := json.Marshal(map[string]any{
-		"name":        sharedInbox.name,
+// sharedInboxBody is the create the suite sends. The name rides it, so a replay only matches the
+// recording when it draws the name the recording drew.
+func sharedInboxBody(name string) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"name":        name,
 		"description": "The shared inbox of the example programs.",
 	})
+}
+
+// buildTheSharedInbox creates the one inbox the example programs share. The create belongs to the
+// suite and not to whichever leg asked for the inbox first, so it goes through a cassette of its
+// own. A record run sends it through the transport of the process, so it stays out of the cassette
+// of that leg, and a replay reads the cassette of the suite and reaches no account.
+func buildTheSharedInbox(mode replaytest.Mode, key, dir string, vendor http.RoundTripper,
+) (fixture *replaytest.Fixture, name, id string, err error) {
+	fixture, err = replaytest.NewFor(mode, dir, sharedInboxCassette, vendor)
 	if err != nil {
-		sharedInbox.err = err
-		return
+		return nil, "", "", err
+	}
+
+	// The name comes from the seed of that cassette, so a replay sends the body the recording
+	// holds. The suite draws the name before the create, so an inbox the API made and then
+	// reported as a failure still leaves a name the teardown sweeps.
+	name = nameFromSeed(fixture.Seed(), inboxKind)
+	body, err := sharedInboxBody(name)
+	if err != nil {
+		return fixture, name, "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 	defer cancel()
 
-	status, answered, err := apiCall(ctx, key, http.MethodPost, "/inboxes", nil, body)
+	status, answered, err := apiCall(ctx, fixture.Client(), key, http.MethodPost, "/inboxes", nil, body)
 	if err != nil {
-		sharedInbox.err = err
-		return
+		return fixture, name, "", err
 	}
 	if status != http.StatusOK && status != http.StatusCreated {
-		sharedInbox.err = fmt.Errorf("the inbox create answered the status %d", status)
-		return
+		return fixture, name, "", fmt.Errorf("the inbox create answered the status %d", status)
 	}
 	var created struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(answered, &created); err != nil {
-		sharedInbox.err = err
-		return
+		return fixture, name, "", err
 	}
-	sharedInbox.id = created.ID
+	return fixture, name, created.ID, nil
+}
+
+// stopTheSharedInboxRecorder closes the cassette of the shared inbox after the last leg. It reads
+// the recorder after the run, because a leg builds it while the run is going on. A record run
+// writes the file here, and a replay reports a recorded call the suite never sent.
+func stopTheSharedInboxRecorder(code int) int {
+	if theSharedInboxFixture == nil {
+		return code
+	}
+	if err := theSharedInboxFixture.Stop(); err != nil {
+		fmt.Fprintf(os.Stderr, "the cassette of the shared inbox failed: %v\n", err)
+		return 1
+	}
+	return code
 }
 
 // removeTheSharedInbox clears the shared inbox after the run. It deletes the identifier the create
 // answered, then sweeps the name: a retried create can leave a second inbox this process never saw.
+// A replay created no inbox, so it removes none.
 func removeTheSharedInbox(ctx context.Context, key string) {
+	if !callsTheAccount() {
+		fmt.Fprintln(os.Stderr, "the replay mode reads a cassette, so no shared inbox is removed")
+		return
+	}
 	if sharedInbox.id != "" {
-		status, _, err := apiCall(ctx, key, http.MethodDelete, "/inboxes/"+sharedInbox.id, nil, nil)
+		status, _, err := apiCall(ctx, vendorClient(), key, http.MethodDelete,
+			"/inboxes/"+sharedInbox.id, nil, nil)
 		if err != nil || (status != http.StatusOK && status != http.StatusNoContent &&
 			status != http.StatusNotFound) {
 			fmt.Fprintf(os.Stderr, "the teardown could not delete the shared inbox: %v %d\n", err, status)
@@ -214,12 +279,12 @@ func runExampleSuite(m *testing.M) int {
 	}
 
 	if key := apiKey(); key != "" {
-		if counted, err := readAccount(context.Background(), key); err == nil {
+		if counted, err := readAccount(context.Background(), key); err == nil && counted != nil {
 			fmt.Fprintln(os.Stderr, surveyLine("before the run", counted))
 		}
 	}
 
-	code := m.Run()
+	code := stopTheSharedInboxRecorder(m.Run())
 
 	key := apiKey()
 	if key == "" {
@@ -228,11 +293,13 @@ func runExampleSuite(m *testing.M) int {
 	ctx := context.Background()
 	removeTheSharedInbox(ctx, key)
 
-	if counted, err := readAccount(ctx, key); err == nil {
-		fmt.Fprintln(os.Stderr, surveyLine("after the run", counted))
-	} else {
+	counted, err := readAccount(ctx, key)
+	switch {
+	case err != nil:
 		fmt.Fprintf(os.Stderr, "the suite could not read the account after the run: %v\n", err)
 		code = 1
+	case counted != nil:
+		fmt.Fprintln(os.Stderr, surveyLine("after the run", counted))
 	}
 
 	spent := inboxCreations.Load()
@@ -244,22 +311,31 @@ func runExampleSuite(m *testing.M) int {
 	return code
 }
 
-// baseOptions is what every language leg starts from. The provider comes from the binary this
-// repository built, so no plugin is downloaded and no published version is reached.
+// baseOptions is what every language leg starts from. A live run reads the provider from the
+// binary this repository built, so no plugin is downloaded and no published version is reached. A
+// replay and a record attach the provider this test process serves, which the recorder reaches.
 func baseOptions(t *testing.T) integration.ProgramTestOptions {
 	t.Helper()
-	binPath, err := filepath.Abs("../bin")
-	require.NoError(t, err)
 	home, err := filepath.Abs("../.pulumi")
 	require.NoError(t, err)
 
-	return integration.ProgramTestOptions{
-		LocalProviders: []integration.LocalDependency{{Package: "mailslurp", Path: binPath}},
-		PulumiHomeDir:  home,
+	options := integration.ProgramTestOptions{
+		PulumiHomeDir: home,
 		// The roundtrip writes a second copy of the checkpoint, and the state of a credentialed
 		// run holds the configuration of the provider, so this suite leaves the roundtrip out.
 		SkipExportImport: true,
+		// A leg that attaches the provider in process also writes the placeholder credential into
+		// the environment, and Go refuses an environment write in a parallel test. A live run keeps
+		// the parallel legs.
+		NoParallel: attachesInProcess(),
 	}
+	if attachesInProcess() {
+		return options
+	}
+	binPath, err := filepath.Abs("../bin")
+	require.NoError(t, err)
+	options.LocalProviders = []integration.LocalDependency{{Package: "mailslurp", Path: binPath}}
+	return options
 }
 
 // requireTheFullLifecycle refuses options that dropped a step. The empty preview and update after
@@ -278,10 +354,65 @@ func requireTheFullLifecycle(t *testing.T, options integration.ProgramTestOption
 
 // runProgram drives one example program. Every leg goes through here, so a step turned off
 // anywhere between the shared options and the leg itself fails that leg before it reaches the API.
-func runProgram(t *testing.T, options integration.ProgramTestOptions) {
+func runProgram(t *testing.T, fixture *replaytest.Fixture, options integration.ProgramTestOptions) {
 	t.Helper()
 	requireTheFullLifecycle(t, options)
+	options.Env = append(options.Env, theProviderOfThisRun(t, fixture, options.Dir)...)
 	integration.ProgramTest(t, &options)
+}
+
+// programSource tells the provider factory which program the leg deploys.
+type programSource string
+
+func (s programSource) Source() string { return string(s) }
+
+// debugProvidersVariable points the CLI at a provider that already runs, so the engine starts no
+// plugin for that package.
+const debugProvidersVariable = "PULUMI_DEBUG_PROVIDERS"
+
+// outlivesTheEngine serves one provider across every pulumi process of a leg. The engine sends
+// Cancel when each process ends, and the cancel middleware of the provider then refuses every
+// later call. A plugin binary dies with its process, so no call ever follows a Cancel there; the
+// attached server ignores the call to behave the same way.
+type outlivesTheEngine struct{ rpc.ResourceProviderServer }
+
+func (outlivesTheEngine) Cancel(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+// theProviderOfThisRun answers what one leg adds to its environment to reach the provider. A
+// replay and a record serve the provider inside this test process and hand it the recorder of the
+// leg, so every call it makes lands in the cassette. A live run reads the installed plugin, and
+// adds nothing. No untagged test deploys a program, so this starts nothing without a build tag.
+func theProviderOfThisRun(t *testing.T, fixture *replaytest.Fixture, source string) []string {
+	t.Helper()
+	if !attachesInProcess() {
+		return nil
+	}
+	require.NotNil(t, fixture, "a leg that attaches the provider carries a recorder")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	serve := providers.ResourceProviderFactory(
+		func(providers.PulumiTest) (rpc.ResourceProviderServer, error) {
+			server, err := provider.NewWith(fixture.Transport())(nil)
+			if err != nil {
+				return nil, err
+			}
+			return outlivesTheEngine{server}, nil
+		})
+	port, err := serve(ctx, programSource(source))
+	require.NoError(t, err, "the test process should serve the provider")
+
+	environment := []string{debugProvidersVariable + "=" + providers.GetDebugProvidersEnv(
+		map[providers.ProviderName]providers.Port{providers.ProviderName(provider.Name): port})}
+	if !callsTheAccount() {
+		// The engine reads the key of the provider from the environment. A replayed call carries
+		// no credential, so the leg runs on a value the account never issued.
+		environment = append(environment, apiKeyVariable+"="+noAccountKey)
+	}
+	return environment
 }
 
 func nodejsOptions(t *testing.T) integration.ProgramTestOptions {
@@ -318,4 +449,13 @@ func goOptions(t *testing.T) integration.ProgramTestOptions {
 		},
 		Env: []string{"PULUMI_GO_DEP_ROOT=" + depRoot},
 	})
+}
+
+// TestTheLegsRunOneAtATimeWhenTheProviderAttachesInProcess pins the option that keeps the recorded
+// legs serial. A parallel leg would panic on the environment write of the placeholder credential.
+func TestTheLegsRunOneAtATimeWhenTheProviderAttachesInProcess(t *testing.T) {
+	for mode, serial := range map[string]bool{"replay": true, "record": true, "live": false} {
+		t.Setenv(replaytest.ModeVariable, mode)
+		require.Equalf(t, serial, baseOptions(t).NoParallel, "the %s mode", mode)
+	}
 }

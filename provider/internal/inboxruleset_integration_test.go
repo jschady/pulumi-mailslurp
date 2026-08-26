@@ -4,6 +4,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -17,10 +18,11 @@ import (
 
 // rulesetIDsTargeting answers the identifiers of the rulesets that carry one target. The lifecycle
 // test reads it to prove that a replacement built a second ruleset and then removed the first.
-func rulesetIDsTargeting(ctx context.Context, key, target string) ([]string, error) {
+func rulesetIDsTargeting(ctx context.Context, httpClient *http.Client, key, target string,
+) ([]string, error) {
 	var ids []string
 	for page := range sweepMaxPages {
-		found, err := listRulesets(ctx, key, page)
+		found, err := listRulesets(ctx, httpClient, key, page)
 		if err != nil {
 			return nil, err
 		}
@@ -40,16 +42,17 @@ func rulesetIDsTargeting(ctx context.Context, key, target string) ([]string, err
 // inbox. The `action` change proves the whole-resource replace path.
 func TestInboxRulesetLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
 	guardTheInboxBudget(t)
 
-	s := configuredServer(t, key)
-	target := rulesetTargetFor(newTestName(testRulesetKind))
+	s := configuredServer(t, fx, key)
+	target := rulesetTargetFor(recordedName(fx, testRulesetKind))
 
 	// Cleanup runs on failure too. It deletes by an identifier the list answered, never by a value
 	// it did not capture, and it tolerates a ruleset that is already gone.
 	t.Cleanup(func() {
-		rulesetSweeper.sweepMarked(context.WithoutCancel(context.Background()), key, target)
+		rulesetSweeper.sweepMarked(context.WithoutCancel(context.Background()), fx.Client(), key, target)
 	})
 
 	inputs := func(action RulesetAction) property.Map {
@@ -83,7 +86,7 @@ func TestInboxRulesetLifeCycle(t *testing.T) {
 				_, err := time.Parse(time.RFC3339, createdAt)
 				assert.NoError(t, err, "the creation time must parse as RFC 3339: %q", createdAt)
 
-				ids, err := rulesetIDsTargeting(context.Background(), key, target)
+				ids, err := rulesetIDsTargeting(context.Background(), fx.Client(), key, target)
 				require.NoError(t, err)
 				require.Len(t, ids, 1, "the create must build exactly one ruleset")
 				firstID = ids[0]
@@ -101,7 +104,7 @@ func TestInboxRulesetLifeCycle(t *testing.T) {
 					assert.NotEqual(t, createdAt, output.Get(rulesetPropCreatedAt).AsString(),
 						"an action change must replace the ruleset")
 
-					ids, err := rulesetIDsTargeting(context.Background(), key, target)
+					ids, err := rulesetIDsTargeting(context.Background(), fx.Client(), key, target)
 					require.NoError(t, err)
 					require.NotEmpty(t, firstID, "the create captured no identifier")
 					var built []string
@@ -119,7 +122,7 @@ func TestInboxRulesetLifeCycle(t *testing.T) {
 	require.True(t, replaced, "the harness skipped the replacement, so nothing proved it")
 
 	// The lifecycle deletes the ruleset it last created, so the account holds none of this run.
-	ids, err := rulesetIDsTargeting(context.Background(), key, target)
+	ids, err := rulesetIDsTargeting(context.Background(), fx.Client(), key, target)
 	require.NoError(t, err)
 	assert.Empty(t, ids, "the lifecycle left a ruleset behind, the first one included")
 }
@@ -127,9 +130,12 @@ func TestInboxRulesetLifeCycle(t *testing.T) {
 // The suite must leave the account as it found it, and the shared inbox goes with it in teardown.
 func TestTheAccountHoldsNoTestRulesetAfterTheLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
 
-	found, err := listRulesets(context.Background(), key, 0)
+	found, err := listRulesets(context.Background(), fx.Client(), key, 0)
 	require.NoError(t, err)
 	for _, summary := range found {
 		assert.False(t, rulesetTargetPattern.MatchString(summary.Target),

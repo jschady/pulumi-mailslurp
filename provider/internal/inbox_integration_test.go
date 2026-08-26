@@ -14,12 +14,15 @@ import (
 	"github.com/pulumi/pulumi-go-provider/integration"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/property"
+
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
 )
 
-// configuredServer builds a provider server that talks to the real API.
-func configuredServer(t *testing.T, key string) integration.Server {
+// configuredServer builds a provider server whose client sends every call through the recorder of
+// the test. A replay serves those calls from the cassette, and a record run writes them to it.
+func configuredServer(t *testing.T, fx *replaytest.Fixture, key string) integration.Server {
 	t.Helper()
-	s := newTestServer(t, countingClientF)
+	s := newTestServer(t, countingClientF(fx.Transport()))
 	require.NoError(t, s.Configure(p.ConfigureRequest{Args: configMap(key, defaultBaseURL)}))
 	return s
 }
@@ -28,10 +31,10 @@ func configuredServer(t *testing.T, key string) integration.Server {
 // it instead of creating one of its own, because MailSlurp bills each create.
 func TestTheSharedInboxIsReadable(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
 
-	client, err := NewClient(defaultBaseURL, key)
-	require.NoError(t, err)
+	client := theClient(t, fx, key)
 
 	got, err := client.GetInbox(context.Background(), sharedInboxID)
 	require.NoError(t, err)
@@ -45,7 +48,10 @@ func TestTheSharedInboxIsReadable(t *testing.T) {
 // this run created is younger than sweepMinAge, so the age gate protects it.
 func TestASecondSweepFindsNothingToClean(t *testing.T) {
 	key := requireAPIKey(t)
-	assert.Zero(t, inboxSweeper.sweepStale(context.Background(), key),
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
+	assert.Zero(t, inboxSweeper.sweepStale(context.Background(), fx.Client(), key),
 		"the pre-test sweep left something behind")
 }
 
@@ -53,18 +59,19 @@ func TestASecondSweepFindsNothingToClean(t *testing.T) {
 // replaces on `prefix` rather than `domainName`: this account holds no verified custom domain.
 func TestInboxLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
-	s := configuredServer(t, key)
+	fx := theFixture(t)
+	s := configuredServer(t, fx, key)
 
-	createdName := newTestName(testInboxKind)
-	renamedName := newTestName(testInboxKind)
+	createdName := recordedName(fx, testInboxKind)
+	renamedName := recordedName(fx, testInboxKind)
 	const description = "The lifecycle inbox of the pulumi-mailslurp integration suite."
 	const addressPrefix = "pulumitest"
 
 	// Cleanup runs on failure too, and tolerates an inbox that is already gone.
 	t.Cleanup(func() {
 		ctx := context.WithoutCancel(context.Background())
-		inboxSweeper.sweepMarked(ctx, key, createdName)
-		inboxSweeper.sweepMarked(ctx, key, renamedName)
+		inboxSweeper.sweepMarked(ctx, fx.Client(), key, createdName)
+		inboxSweeper.sweepMarked(ctx, fx.Client(), key, renamedName)
 	})
 
 	inputs := func(name string, prefix *string) property.Map {

@@ -5,8 +5,8 @@ Every job runs on `ubuntu-latest`, and no job calls a Pulumi-organization servic
 
 | File | Trigger | Jobs |
 | --- | --- | --- |
-| `pull-request.yml` | a pull request, a new label on one, or a manual run | `prerequisites`, `build_sdks`, `compile_examples`, `examples`, `test_examples`, `lint`, `unit`, `integration`, `sentinel` |
-| `main.yml` | a push to `main` | the same 9 jobs, plus `snapshot` |
+| `pull-request.yml` | a pull request, a new label on one, or a manual run | `prerequisites`, `build_sdks`, `compile_examples`, `examples`, `test_examples`, `test_examples_live`, `lint`, `unit`, `integration`, `integration_live`, `sentinel` |
+| `main.yml` | a push to `main` | the same 11 jobs, plus `snapshot` |
 | `release.yml` | a push of a `v*.*.*` tag | `prerequisites`, `build_sdks`, `unit`, `confirm_sdks`, `publish_provider`, `publish_sdks`, `publish_go_sdk` |
 | `spec-drift.yml` | 06:17 UTC each Monday, or a manual run | `spec_diff` |
 | `pull-request-commands.yml` | a new pull request | `note` |
@@ -20,8 +20,8 @@ skip, and it fails on any other result. Branch protection needs one required che
 
 The `prerequisites` job builds the schema and the provider binary, then uploads the binary as an
 artifact. The `build_sdks` job builds one SDK for each of the 4 languages and uploads each one. It
-reads the committed schema, so it opens no binary. The `test_examples` job downloads the provider
-binary. The other jobs need no artifact.
+reads the committed schema, so it opens no binary. The `test_examples` and `test_examples_live`
+jobs download the provider binary. The other jobs need no artifact.
 
 The `release.yml` workflow publishes in a fixed order: the provider binaries first, then the npm,
 PyPI, and NuGet packages, then the Go SDK tag. Each publish job needs the one before it, so a failure
@@ -42,7 +42,7 @@ them. That script reads the name and the version each staged artifact would publ
 The `publish_provider` job needs this one, so a release page never carries binaries that no SDK can
 be published against. A path that exists on its own proves nothing, so the names are read instead.
 
-## 3 jobs that read the examples
+## 4 jobs that read the examples
 
 The `compile_examples` job runs `make compile_examples`, which builds all 4 example programs against
 the SDKs this build generates. It ran a test filter that matched no test before, which builds the
@@ -52,8 +52,12 @@ The `examples` job reads no API key. It runs on every pull request, forks includ
 the source program into the 4 languages with `make examples`, then fails when `git status` reports a
 difference. It then runs the example tests that carry no build tag.
 
-The `test_examples` job runs `make test_examples`, which is one process carrying every build tag. One
-process for each language paid for a shared inbox each, and the account bills every inbox.
+The `test_examples` job runs `make test_examples`. That target replays the recorded traffic, so the
+job reads no API key and runs on every pull request.
+
+The `test_examples_live` job runs `make test_examples_live` against MailSlurp. It is one process
+carrying every build tag. One process for each language paid for a shared inbox each, and the
+account bills every inbox.
 
 ## Lint job
 
@@ -83,7 +87,7 @@ variables pin `actionlint`, and `check-workflows.sh` holds the same 2 values.
 
 | Secret | Workflow | Use |
 | --- | --- | --- |
-| `MAILSLURP_API_KEY` | `pull-request.yml`, `main.yml`, `acceptance-tests.yml` | the API key for `test_examples` and `integration` |
+| `MAILSLURP_API_KEY` | `pull-request.yml`, `main.yml`, `acceptance-tests.yml` | the API key for `test_examples_live` and `integration_live` |
 | `NPM_TOKEN` | `release.yml` | the value that npm publishes with |
 | `NUGET_PUBLISH_KEY` | `release.yml` | the NuGet push key |
 | `GITHUB_TOKEN` | every workflow | supplied by GitHub |
@@ -93,8 +97,9 @@ asks for the `id-token: write` permission. A human must register the trusted pub
 
 ## Gate on the API key
 
-2 jobs spend money: `test_examples` and `integration`. On a pull request both need 2 things: the
-branch comes from this repository, and the pull request carries the `run-live-tests` label.
+2 jobs spend money: `test_examples_live` and `integration_live`. On a pull request both need 2
+things: the branch comes from this repository, and the pull request carries the `run-live-tests`
+label.
 
 A pull request without the label skips both jobs. A pull request from a fork skips both jobs. Every
 pull request still gets these checks:
@@ -104,6 +109,12 @@ pull request still gets these checks:
 - unit tests
 - example compile
 - example conversion and the example tests that read no API key
+- the `test_examples` job, which replays the recorded traffic of the example programs
+- the `integration` job, which replays the recorded traffic of the integration tests
+
+The `test_examples` and `integration` jobs read no secret, and no gate holds either one back. They
+answer every call from the recorded cassettes. A missing cassette fails the job and names the file,
+so an unrecorded test cannot pass unnoticed.
 
 ## Acceptance-test command
 
@@ -116,8 +127,8 @@ acceptance tests with a comment instead.
 3. The maintainer comments `/run-acceptance-tests` on the pull request.
 4. The `authorize` job reads `author_association`. Only `OWNER`, `MEMBER`, and `COLLABORATOR` pass.
    The job then reads the head commit of the pull request and reports it in a comment.
-5. The `acceptance_tests` job checks out that commit by its SHA. It runs `make test_integration` and
-   `make test_examples`.
+5. The `acceptance_tests` job checks out that commit by its SHA. It runs
+   `make test_integration_live` and `make test_examples_live`.
 
 **Warning:** The command runs the code of the pull request with the API key of this repository. Read
 the changes before you comment.
@@ -135,8 +146,28 @@ with a green exit code is a false pass, so the `integration` job runs 3 steps:
 3. Run `./scripts/check-tests-ran.sh` over the list and the log. That script fails when a listed
    test never printed `=== RUN`, and when a listed test skipped itself.
 
-There is one copy of that script. Every job that runs the credentialed tests calls it, so a fix to
+The `integration_live` job runs the same 3 steps with `make test_integration_live`, and
+`acceptance-tests.yml` runs them too.
+
+There is one copy of that script. Every job that runs the integration tests calls it, so a fix to
 the comparison reaches each one.
+
+## Record the fixtures
+
+The replay jobs read cassettes that a person records by hand. Recording calls MailSlurp, so it needs
+the API key and it spends the account.
+
+**Warning:** If you record against an account that holds real mail, a failed run can leave objects
+behind. Use an empty account.
+
+1. Export the API key: `export MAILSLURP_API_KEY=your-api-key`.
+2. Run `make record_integration` to write the cassettes of the integration tests.
+3. Run `make record_examples` to write the cassettes of the example programs.
+
+Each run writes one cassette and one seed file for each test, under
+`provider/internal/testdata/cassettes/` and `examples/testdata/cassettes/`. Commit both files. The
+scrub drops the API key header before a cassette reaches the disk. A test reads every committed
+cassette back for a key.
 
 ## Coverage profile
 
@@ -148,9 +179,22 @@ reads the profile.
 ## Spec drift check
 
 The `spec_diff` job fetches the live MailSlurp spec from `https://api.mailslurp.com/v2/api-docs`. It
-compares the set of `paths` keys with the set in `api/openapi.json`, and it fails when a path appears
-on one side only. The job never compares the version string in the spec. MailSlurp raises that string
-for changes that leave the surface alone, so a version compare reports drift every week.
+compares the live document with `api/openapi.json` on the surface the client calls. That surface is
+the 6 path families that `provider/internal/client_*.go` name, plus every component those paths
+reach through a `$ref`. The job never compares the version string in the spec. MailSlurp raises that
+string for changes that leave the surface alone, so a version compare reports drift every week.
+
+A path outside the 6 families can appear or disappear without the provider noticing. The job lists
+such a path in its log and stays green.
+
+When a watched path or component moved, the job opens a pull request instead of failing. The
+pull request runs `./scripts/pin-spec.sh` over the live document, which copies it over
+`api/openapi.json` and rewrites the 2 constants in `provider/foundation_test.go` that describe it.
+The pull request body lists what moved. Read the client for each item, then merge.
+
+The job pushes to the `bot/spec-update` branch and opens one pull request for it. A later run with
+the same branch open rewrites the branch and the body. GitHub starts no checks on a pull request that
+`GITHUB_TOKEN` opens. Close it and open it again to start them.
 
 ## Worktree checks
 

@@ -6,8 +6,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"testing"
@@ -15,21 +19,84 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
 )
 
 const (
 	//nolint:gosec // G101: this names the environment variable, and holds no credential.
 	apiKeyVariable = "MAILSLURP_API_KEY"
 	setupTimeout   = 2 * time.Minute
+
+	// cassetteDir holds the recorded calls of this suite. A test runs in the directory of its own
+	// package, so the path is relative to it.
+	cassetteDir = "testdata/cassettes"
+
+	// replayPlaceholder stands in for the credential of a replay. The scrub drops the key header
+	// from every cassette and the matcher reads no header, so the value is never the real one.
+	replayPlaceholder = "replay"
+
+	// sharedInboxCassette names the cassette the shared inbox belongs to. Whichever test asks for
+	// the inbox first causes the create, so those calls belong to the suite and not to that test.
+	sharedInboxCassette = "TestMain_shared_inbox"
 )
 
-// countingClientF is the client factory the integration tests configure the provider with.
-func countingClientF(ctx context.Context, cfg *Config) (Client, error) {
-	base, err := RealClientF(ctx, cfg)
-	if err != nil {
-		return nil, err
+// countingClientF answers the client factory the integration tests configure the provider with.
+// Every call the provider makes goes through the transport of the test, and each inbox it creates
+// is charged against the budget.
+func countingClientF(transport http.RoundTripper) clientF {
+	return func(_ context.Context, cfg *Config) (Client, error) {
+		base, err := NewClientWith(cfg.Endpoint, cfg.APIKey, transport)
+		if err != nil {
+			return nil, err
+		}
+		return countingClient{Client: base}, nil
 	}
-	return countingClient{Client: base}, nil
+}
+
+// theVendorTransport is the transport the process starts with. A test points the default transport
+// at its own recorder while it runs, so a call that belongs to the suite rather than to a test names
+// this one and stays out of every cassette.
+var theVendorTransport = http.DefaultTransport
+
+// theVendorClient answers the client of the sweeps and the teardown of the suite. Those calls
+// belong to no test, no cassette holds them, and they run in the record mode and the live mode
+// alone, so they name the transport of the process rather than the recorder of a test.
+func theVendorClient() *http.Client { return replaytest.ClientFor(theVendorTransport) }
+
+// theFixture builds the recorder of one test. Every call of that test goes through it, and a
+// missing cassette fails the test here rather than reaching the account.
+func theFixture(t *testing.T) *replaytest.Fixture {
+	t.Helper()
+	fx := replaytest.New(t, cassetteDir)
+	captureTheDefaultTransport(t, fx)
+	return fx
+}
+
+// captureTheDefaultTransport points the default transport at the recorder of one test, and puts the
+// old one back when the test ends. The paged list readers and the sweepers each build an HTTP client
+// that names no transport, so they reach the default one, and this is the seam that covers them. The
+// tests that reach the account run one after another, so no two of them hold the default at once.
+func captureTheDefaultTransport(t *testing.T, fx *replaytest.Fixture) {
+	t.Helper()
+	previous := http.DefaultTransport
+	http.DefaultTransport = fx.Transport()
+	t.Cleanup(func() { http.DefaultTransport = previous })
+}
+
+// theClient builds a MailSlurp client that sends every call through the recorder of one test.
+func theClient(t *testing.T, fx *replaytest.Fixture, key string) Client {
+	t.Helper()
+	client, err := NewClientWith(defaultBaseURL, key, fx.Transport())
+	require.NoError(t, err)
+	return client
+}
+
+// recordedName builds a vendor object name from the seed of one test. The Nth name of a replay is
+// the name the recording made, so a recorded request body still matches. It builds the same shape
+// newTestName builds, so every sweep pattern matches it.
+func recordedName(fx *replaytest.Fixture, kind string) string {
+	return testNamePrefix + kind + "-" + fx.Seed().Hex(4)
 }
 
 // sharedInbox is the one inbox every inbox-scoped test reuses. MailSlurp bills each inbox and burns
@@ -47,7 +114,10 @@ var sharedInbox struct {
 func theSharedInbox(t *testing.T) string {
 	t.Helper()
 	key := requireAPIKey(t)
-	sharedInbox.once.Do(func() { buildTheSharedInbox(key) })
+	mode := replaytest.ModeOf(t)
+	sharedInbox.once.Do(func() {
+		sharedInbox.name, sharedInbox.id, sharedInbox.err = buildTheSharedInbox(mode, key, cassetteDir)
+	})
 	require.NoError(t, sharedInbox.err, "the suite could not create the shared inbox")
 	require.NotEmpty(t, sharedInbox.id, "the create of the shared inbox answered no identifier")
 	return sharedInbox.id
@@ -60,15 +130,138 @@ func theSharedInboxName(t *testing.T) string {
 	return sharedInbox.name
 }
 
-func buildTheSharedInbox(key string) {
-	client, err := NewClient(defaultBaseURL, key)
+// theSharedInboxFixture holds the recorder of the cassette the shared inbox belongs to. A run that
+// asked for no inbox builds none, and the suite then closes nothing.
+var theSharedInboxFixture *replaytest.Fixture
+
+// buildTheSharedInbox creates the one inbox the suite shares. The create belongs to the suite and
+// not to whichever test asked for the inbox first, so it goes through a cassette of its own. A
+// record run sends it through the transport of the process, so it stays out of the cassette of that
+// test, and a replay reads the cassette of the suite and reaches no account.
+func buildTheSharedInbox(mode replaytest.Mode, key, dir string) (name, id string, err error) {
+	fx, err := replaytest.NewFor(mode, dir, sharedInboxCassette, theVendorTransport)
 	if err != nil {
-		sharedInbox.err = err
-		return
+		return "", "", err
+	}
+	theSharedInboxFixture = fx
+
+	client, err := NewClientWith(defaultBaseURL, key, fx.Transport())
+	if err != nil {
+		return "", "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
 	defer cancel()
-	sharedInbox.id, sharedInbox.name, sharedInbox.err = createTheSharedInbox(ctx, client)
+
+	// The name comes from the seed of that cassette, so a replay sends the body the recording
+	// holds. The suite draws the name before the create, so a create the vendor performed and then
+	// reported as a failure still leaves a name the teardown sweeps.
+	name = recordedName(fx, testInboxKind)
+	id, err = createTheSharedInbox(ctx, client, name)
+	return name, id, err
+}
+
+// stopTheSharedInboxRecorder closes the cassette of the shared inbox after the last test. It reads
+// the recorder after the run, because a test builds it while the run is going on.
+func stopTheSharedInboxRecorder(code int) int { return closeTheCassette(theSharedInboxFixture, code) }
+
+// closeTheCassette closes one recorder and answers the code the suite reports. A record run writes
+// the file here, and a replay reports a recorded call the suite never sent. A run that asked for no
+// inbox built no recorder, so it closes nothing.
+func closeTheCassette(fx *replaytest.Fixture, code int) int {
+	if fx == nil {
+		return code
+	}
+	if err := fx.Stop(); err != nil {
+		fmt.Fprintf(os.Stderr, "the cassette of the shared inbox failed: %v\n", err)
+		return 1
+	}
+	return code
+}
+
+// A replay of the shared inbox reads a cassette of its own, so it reaches no account. A cassette
+// nobody recorded names the file and the target that writes it, the same way a test does.
+func TestTheSharedInboxReplaysACassetteOfItsOwn(t *testing.T) {
+	t.Parallel()
+
+	name, id, err := buildTheSharedInbox(replaytest.Replay, replayPlaceholder, t.TempDir())
+	require.Error(t, err, "a replay must never create the shared inbox")
+	require.ErrorContains(t, err, sharedInboxCassette+".yaml",
+		"the refusal must name the cassette the suite reads")
+	require.ErrorContains(t, err, "make record_integration",
+		"the refusal must name the target that writes it")
+	assert.Empty(t, id)
+	assert.Empty(t, name)
+}
+
+// The suite closes the cassette of the shared inbox after the last test, and a record run writes
+// the file at that close.
+func TestClosingTheCassetteOfTheSharedInboxWritesIt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	assert.Equal(t, 7, closeTheCassette(nil, 7), "a run that built no recorder closes nothing")
+
+	fx, err := replaytest.NewFor(replaytest.Record, dir, sharedInboxCassette, theVendorTransport)
+	require.NoError(t, err)
+	assert.Zero(t, closeTheCassette(fx, 0))
+	assert.FileExists(t, filepath.Join(dir, sharedInboxCassette+".yaml"),
+		"the close writes the cassette the suite records")
+}
+
+// toTheFake sends every call to a local server. It routes a copy, so the request the recorder
+// writes still names the vendor host and a replay matches it.
+type toTheFake struct{ address *url.URL }
+
+func (f toTheFake) RoundTrip(r *http.Request) (*http.Response, error) {
+	routed := r.Clone(r.Context())
+	routed.URL.Scheme = f.address.Scheme
+	routed.URL.Host = f.address.Host
+	routed.Host = f.address.Host
+	return http.DefaultTransport.RoundTrip(routed)
+}
+
+// inboxPageFake answers one page of the inbox list, the way the paginated endpoint does.
+func inboxPageFake(t *testing.T, name string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentTypeJSON)
+		_, _ = io.WriteString(w, `{"content":[{"id":"`+testInboxID+`","name":"`+name+
+			`","createdAt":"2026-01-01T00:00:00Z"}]}`)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// Every list reader sends through the client its caller hands it. A reader that built a client of
+// its own would reach the account on a replay, so this replay hands it a transport that refuses
+// every call and the cassette still answers.
+func TestAReplayedListReadsTheCassetteThroughTheClientOfTheTest(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const name = testNamePrefix + testInboxKind + "-abcd1234"
+	const cassetteName = "TestAReplayedList"
+
+	server := inboxPageFake(t, name)
+	address, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	recording, err := replaytest.NewFor(replaytest.Record, dir, cassetteName, toTheFake{address})
+	require.NoError(t, err)
+	found, err := listRecentInboxes(t.Context(), recording.Client(), replayPlaceholder, 0)
+	require.NoError(t, err)
+	require.Len(t, found, 1, "the recorded read must answer the page the vendor sent")
+	require.NoError(t, recording.Stop())
+	server.Close()
+
+	// The `since` value moves with the clock, so the replayed request never carries the recorded
+	// one. The matcher drops it, and the cassette answers the read with the vendor stopped.
+	replaying, err := replaytest.NewFor(replaytest.Replay, dir, cassetteName, refusingTransport{})
+	require.NoError(t, err)
+	replayed, err := listRecentInboxes(t.Context(), replaying.Client(), replayPlaceholder, 0)
+	require.NoError(t, err, "the reader must answer from the cassette and reach no account")
+	require.Equal(t, found, replayed)
+	require.NoError(t, replaying.Stop(), "the replay must consume the recorded read")
+	require.Len(t, replaying.Requests(), 1, "the read must go through the recorder of the caller")
 }
 
 // accountSnapshot is the read-only account state the zero-mutation proof compares.
@@ -91,15 +284,15 @@ func sortedIDs[T any](items []T, identify func(T) string) []string {
 
 // readAccount answers the identifiers the account holds. The inbox and webhook lists carry the
 // page and age bounds the sweeper uses, which reach every object a test run of this suite builds.
-func readAccount(t *testing.T, key string) accountSnapshot {
+func readAccount(t *testing.T, fx *replaytest.Fixture, key string) accountSnapshot {
 	t.Helper()
 	ctx := context.Background()
 
-	domains, err := listDomains(ctx, key)
+	domains, err := listDomains(ctx, fx.Client(), key)
 	require.NoError(t, err)
-	inboxes, err := listRecentInboxes(ctx, key, 0)
+	inboxes, err := listRecentInboxes(ctx, fx.Client(), key, 0)
 	require.NoError(t, err)
-	webhooks, err := listWebhooks(ctx, key, 0)
+	webhooks, err := listWebhooks(ctx, fx.Client(), key, 0)
 	require.NoError(t, err)
 
 	return accountSnapshot{
@@ -111,9 +304,14 @@ func readAccount(t *testing.T, key string) accountSnapshot {
 
 func apiKey() string { return os.Getenv(apiKeyVariable) }
 
-// requireAPIKey skips the calling test when the credential is absent, and names the variable.
+// requireAPIKey answers the key this run needs. A replay reads a cassette and reaches no account,
+// so it takes a placeholder and never skips. A record run and a live run both reach the account,
+// so they need the credential, and they skip when it is absent.
 func requireAPIKey(t *testing.T) string {
 	t.Helper()
+	if replaytest.ModeOf(t) == replaytest.Replay {
+		return replayPlaceholder
+	}
 	key := apiKey()
 	if key == "" {
 		t.Skipf("set %s to run the integration tests", apiKeyVariable)
@@ -122,10 +320,10 @@ func requireAPIKey(t *testing.T) string {
 }
 
 // countWebhooks answers how many webhooks the account holds, up to the page bound of the sweep.
-func countWebhooks(ctx context.Context, key string) (int, error) {
+func countWebhooks(ctx context.Context, httpClient *http.Client, key string) (int, error) {
 	total := 0
 	for page := range sweepMaxPages {
-		found, err := listWebhooks(ctx, key, page)
+		found, err := listWebhooks(ctx, httpClient, key, page)
 		if err != nil {
 			return 0, err
 		}
@@ -212,11 +410,24 @@ func listingOnly() bool {
 }
 
 func runIntegrationSuite(m *testing.M) int {
+	mode, err := replaytest.ReadMode()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	key := apiKey()
-	// A listing run prints test names only, and an absent key makes every test skip. Neither
-	// builds a vendor object, so neither runs the setup below.
-	if listingOnly() || key == "" {
+	// A listing run prints test names only, so it builds no vendor object and it needs no setup.
+	if listingOnly() {
 		return m.Run()
+	}
+	// A replay reads a cassette and reaches no account, so it sweeps nothing and deletes nothing.
+	if mode == replaytest.Replay {
+		fmt.Fprintln(os.Stderr, "the suite replays cassettes, so it sweeps no account")
+		return stopTheSharedInboxRecorder(m.Run())
+	}
+	// An absent key makes every test skip, and a run that builds no vendor object needs no sweep.
+	if key == "" {
+		return stopTheSharedInboxRecorder(m.Run())
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
@@ -225,13 +436,13 @@ func runIntegrationSuite(m *testing.M) int {
 
 	// A crashed run never reaches its cleanup, so every kind is swept before the first test.
 	for _, sweep := range staleSweeps() {
-		if removed := sweep.run(ctx, key); removed > 0 {
+		if removed := sweep.run(ctx, theVendorClient(), key); removed > 0 {
 			fmt.Fprintf(os.Stderr, "the sweeper removed %s\n",
 				plural(removed, "stale test "+sweep.kind, "stale test "+sweep.plural))
 		}
 	}
 
-	code := m.Run()
+	code := stopTheSharedInboxRecorder(m.Run())
 
 	// The shared inbox exists only when a test asked for it, and the teardown tolerates an inbox
 	// that is already gone.
@@ -243,7 +454,9 @@ func runIntegrationSuite(m *testing.M) int {
 			}
 			return client.DeleteInbox(teardown, id)
 		},
-		func(name string) int { return inboxSweeper.sweepMarked(teardown, key, name) },
+		func(name string) int {
+			return inboxSweeper.sweepMarked(teardown, theVendorClient(), key, name)
+		},
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "the suite could not delete the shared inbox: %v\n", err)
 		code = 1

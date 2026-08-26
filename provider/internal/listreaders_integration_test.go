@@ -17,12 +17,15 @@ import (
 // fails to decode, so either mistake fails here. This test creates no inbox.
 func TestEveryListReaderReachesItsOwnEndpoint(t *testing.T) {
 	key := requireAPIKey(t)
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
 
 	ctx := context.Background()
 	for _, probe := range listReaderProbes() {
 		t.Run(probe.kind, func(t *testing.T) {
-			require.NoErrorf(t, probe.read(ctx, key),
+			require.NoErrorf(t, probe.read(ctx, fx.Client(), key),
 				"the %s reader should reach the endpoint it builds", probe.kind)
 		})
 	}
@@ -32,16 +35,18 @@ func TestEveryListReaderReachesItsOwnEndpoint(t *testing.T) {
 // ones appear only when the reader asks for them. This test creates no inbox.
 func TestTheWebhookReaderSeesAnAccountWebhook(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
 
-	client, err := NewClient(defaultBaseURL, key)
-	require.NoError(t, err)
+	client := theClient(t, fx, key)
 
 	ctx := context.Background()
-	name := newTestName(testWebhookKind)
+	name := recordedName(fx, testWebhookKind)
 	// The sweep is registered before the create, so a webhook the API made and then reported as a
 	// failure is still removed.
-	t.Cleanup(func() { webhookSweeper.sweepMarked(context.WithoutCancel(ctx), key, name) })
+	t.Cleanup(func() {
+		webhookSweeper.sweepMarked(context.WithoutCancel(ctx), fx.Client(), key, name)
+	})
 
 	created, err := client.CreateAccountWebhook(ctx, WebhookOptions{
 		URL:       "https://example.com/mailslurp/list-reader",
@@ -54,7 +59,7 @@ func TestTheWebhookReaderSeesAnAccountWebhook(t *testing.T) {
 		assert.NoError(t, client.DeleteWebhook(context.WithoutCancel(ctx), created.ID))
 	})
 
-	found, err := listWebhooks(ctx, key, 0)
+	found, err := listWebhooks(ctx, fx.Client(), key, 0)
 	require.NoError(t, err)
 
 	var seen bool

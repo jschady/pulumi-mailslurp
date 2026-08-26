@@ -4,6 +4,7 @@ package internal
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -13,14 +14,17 @@ import (
 	"github.com/pulumi/pulumi-go-provider/integration"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/property"
+
+	"github.com/jschady/pulumi-mailslurp/internal/replaytest"
 )
 
 // forwarderIDsSendingTo answers the identifiers of the forwarders that send to one address. The
 // lifecycle test reads it to prove that the update kept the one forwarder the create built.
-func forwarderIDsSendingTo(ctx context.Context, key, recipient string) ([]string, error) {
+func forwarderIDsSendingTo(ctx context.Context, httpClient *http.Client, key, recipient string,
+) ([]string, error) {
 	var ids []string
 	for page := range sweepMaxPages {
-		found, err := listForwarders(ctx, key, page)
+		found, err := listForwarders(ctx, httpClient, key, page)
 		if err != nil {
 			return nil, err
 		}
@@ -55,17 +59,16 @@ func recipientsFrom(output property.Map) []string {
 
 // requireForwarderEntitlement skips the calling test when the account plan refuses a forwarder.
 // MailSlurp gates the create alone, so no read answers the question and the probe has to write.
-func requireForwarderEntitlement(t *testing.T, key, inboxID string) {
+func requireForwarderEntitlement(t *testing.T, fx *replaytest.Fixture, key, inboxID string) {
 	t.Helper()
-	client, err := NewClient(defaultBaseURL, key)
-	require.NoError(t, err)
+	client := theClient(t, fx, key)
 
 	ctx := context.Background()
-	recipient := forwarderRecipientFor(newTestName(testForwarderKind))
+	recipient := forwarderRecipientFor(recordedName(fx, testForwarderKind))
 	// The sweep is registered before the create, so a create the vendor performed and then reported
 	// as a failure is still removed.
 	t.Cleanup(func() {
-		forwarderSweeper.sweepMarked(context.WithoutCancel(ctx), key, recipient)
+		forwarderSweeper.sweepMarked(context.WithoutCancel(ctx), fx.Client(), key, recipient)
 	})
 
 	// The API refuses a body that names neither a field and a match nor a match tree, so the probe
@@ -88,17 +91,19 @@ func requireForwarderEntitlement(t *testing.T, key, inboxID string) {
 // inbox. The `match` change proves the in-place update path.
 func TestInboxForwarderLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	fx := theFixture(t)
 	sharedInboxID := theSharedInbox(t)
 	guardTheInboxBudget(t)
-	requireForwarderEntitlement(t, key, sharedInboxID)
+	requireForwarderEntitlement(t, fx, key, sharedInboxID)
 
-	s := configuredServer(t, key)
-	recipient := forwarderRecipientFor(newTestName(testForwarderKind))
+	s := configuredServer(t, fx, key)
+	recipient := forwarderRecipientFor(recordedName(fx, testForwarderKind))
 
 	// Cleanup runs on failure too. It deletes by an identifier the list answered, never by a value
 	// it did not capture, and it tolerates a forwarder that is already gone.
 	t.Cleanup(func() {
-		forwarderSweeper.sweepMarked(context.WithoutCancel(context.Background()), key, recipient)
+		forwarderSweeper.sweepMarked(context.WithoutCancel(context.Background()), fx.Client(), key,
+			recipient)
 	})
 
 	inputs := func(match string) property.Map {
@@ -132,7 +137,7 @@ func TestInboxForwarderLifeCycle(t *testing.T) {
 				_, err := time.Parse(time.RFC3339, createdAt)
 				assert.NoError(t, err, "the creation time must parse as RFC 3339: %q", createdAt)
 
-				ids, err := forwarderIDsSendingTo(context.Background(), key, recipient)
+				ids, err := forwarderIDsSendingTo(context.Background(), fx.Client(), key, recipient)
 				require.NoError(t, err)
 				require.Len(t, ids, 1, "the create must build exactly one forwarder")
 				firstID = ids[0]
@@ -152,7 +157,7 @@ func TestInboxForwarderLifeCycle(t *testing.T) {
 					assert.Equal(t, createdAt, output.Get(forwarderPropCreatedAt).AsString(),
 						"an in-place update never moves the creation time")
 
-					ids, err := forwarderIDsSendingTo(context.Background(), key, recipient)
+					ids, err := forwarderIDsSendingTo(context.Background(), fx.Client(), key, recipient)
 					require.NoError(t, err)
 					require.NotEmpty(t, firstID, "the create captured no identifier")
 					assert.Equal(t, []string{firstID}, ids,
@@ -167,7 +172,7 @@ func TestInboxForwarderLifeCycle(t *testing.T) {
 	require.True(t, updated, "the update leg never ran, so nothing proved the in-place update")
 
 	// The lifecycle deletes the forwarder it created, so the account holds none of this run.
-	ids, err := forwarderIDsSendingTo(context.Background(), key, recipient)
+	ids, err := forwarderIDsSendingTo(context.Background(), fx.Client(), key, recipient)
 	require.NoError(t, err)
 	assert.Empty(t, ids, "the lifecycle left a forwarder behind")
 }
@@ -175,9 +180,12 @@ func TestInboxForwarderLifeCycle(t *testing.T) {
 // The suite must leave the account as it found it, and the shared inbox goes with it in teardown.
 func TestTheAccountHoldsNoTestForwarderAfterTheLifeCycle(t *testing.T) {
 	key := requireAPIKey(t)
+	// The recorder gates this test: a replay with no cassette fails here rather than reach
+	// the account.
+	fx := theFixture(t)
 	guardTheInboxBudget(t)
 
-	found, err := listForwarders(context.Background(), key, 0)
+	found, err := listForwarders(context.Background(), fx.Client(), key, 0)
 	require.NoError(t, err)
 	for _, summary := range found {
 		for _, address := range summary.ForwardToRecipients {

@@ -70,6 +70,15 @@ func TestOneKeylessJobRunsTheExampleTestsThatNeedNoCredential(t *testing.T) {
 				"the untagged example tests need no credential, so this job reads none")
 			assert.NotContains(t, job, "pull_request.head.repo",
 				"a credential gate would skip these tests on the pull requests that need them most")
+
+			// The replay job runs the whole example suite through a make target, so it declares
+			// no go test line and the count above stays at one. It reads no key and waits for
+			// no label, so the same rule holds for it.
+			replay := workflowJobBody(t, workflow, replayExampleJob)
+			assert.NotContains(t, replay, credentialSecret,
+				"the replay job answers every call from the recorded traffic, so it reads no key")
+			assert.NotContains(t, replay, jobCondition,
+				"a gate on the replay job would skip it on the pull requests that need it most")
 		})
 	}
 }
@@ -100,8 +109,8 @@ func TestOneJobRegeneratesTheExamplesAndRefusesADifference(t *testing.T) {
 func TestTheCredentialedExampleJobRunsOneProcessOverEveryTag(t *testing.T) {
 	for _, workflow := range buildWorkflows() {
 		t.Run(workflow, func(t *testing.T) {
-			job := workflowJobBody(t, workflow, "test_examples")
-			assert.Contains(t, job, "make test_examples",
+			job := workflowJobBody(t, workflow, exampleJob)
+			assert.Contains(t, job, "make "+exampleJob,
 				"the credentialed job must run the target that carries every tag")
 			assert.NotContains(t, job, "matrix",
 				"a matrix runs one process for each language and each pays for the shared inbox")
@@ -274,8 +283,10 @@ func TestTheWorkflowTableRowNamesEveryJobOfItsWorkflow(t *testing.T) {
 // Every tag the example tests carry runs somewhere. The yaml tag was absent from the matrix, so
 // three programs written in Pulumi YAML never ran in CI at all.
 func TestTheCredentialedJobCarriesEveryExampleTag(t *testing.T) {
-	target, err := runMake(t, "-n", "test_examples")
-	require.NoError(t, err, target)
-	assert.Contains(t, target, "-tags=all",
-		"the target the credentialed job runs must carry every tag the example files declare")
+	for _, name := range []string{replayExampleJob, exampleJob} {
+		target, err := runMake(t, "-n", name)
+		require.NoError(t, err, target)
+		assert.Containsf(t, target, "-tags=all",
+			"the %s target must carry every tag the example files declare", name)
+	}
 }

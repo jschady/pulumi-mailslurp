@@ -1,0 +1,127 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        url: https://api.mailslurp.com/inboxes/00000000-0000-0000-0000-000000000000
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 902
+        body: |-
+            {
+              "message" : "Inbox ID 00000000-0000-0000-0000-000000000000 does not exist for user b007b614-bf26-4e9f-a1cf-da013f937815",
+              "messageLabel" : null,
+              "caseNumber" : "CASE-NF-47432f9e-aaf1-4746-b707-6d56b336dfcf",
+              "errorClass" : "Error404NotFound",
+              "errorCode" : "W_404_ENTITY_NOT_FOUND",
+              "retryable" : null,
+              "retryAfterSeconds" : null,
+              "details" : null,
+              "userId" : "b007b614-bf26-4e9f-a1cf-da013f937815",
+              "path" : "/inboxes/00000000-0000-0000-0000-000000000000",
+              "method" : "GET",
+              "operation" : "getInbox",
+              "comment" : "See documentation at `https://docs.mailslurp.com/api/#getInbox`. If your error persists please submit a ticket at `https://www.mailslurp.com/support/`. Please include your error caseNumber `CASE-NF-47432f9e-aaf1-4746-b707-6d56b336dfcf` if available to help support debug the issue. Sharing screenshots or samples of your code will help the team understand."
+            }
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "902"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:40 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 404 Not Found
+        code: 404
+        duration: 144.766584ms
+    - id: 1
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: api.mailslurp.com
+        url: https://api.mailslurp.com/domains/00000000-0000-0000-0000-000000000000
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 860
+        body: |-
+            {
+              "message" : "No domain found for userId and domain id. Have you created it?",
+              "messageLabel" : null,
+              "caseNumber" : "CASE-NF-e40c2687-373e-4ca4-9528-7eaa2f781f3f",
+              "errorClass" : "Error404NotFound",
+              "errorCode" : "W_404_ENTITY_NOT_FOUND",
+              "retryable" : null,
+              "retryAfterSeconds" : null,
+              "details" : null,
+              "userId" : "b007b614-bf26-4e9f-a1cf-da013f937815",
+              "path" : "/domains/00000000-0000-0000-0000-000000000000",
+              "method" : "GET",
+              "operation" : "getDomain",
+              "comment" : "See documentation at `https://docs.mailslurp.com/api/#getDomain`. If your error persists please submit a ticket at `https://www.mailslurp.com/support/`. Please include your error caseNumber `CASE-NF-e40c2687-373e-4ca4-9528-7eaa2f781f3f` if available to help support debug the issue. Sharing screenshots or samples of your code will help the team understand."
+            }
+        headers:
+            Cache-Control:
+                - no-cache, no-store, max-age=0, must-revalidate
+            Content-Length:
+                - "860"
+            Content-Security-Policy:
+                - 'default-src https: ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; object-src none; frame-ancestors ''self'' app.mailslurp.com *.mailslurp.com *.mailslurp.link *.mailslurp.dev http://localhost:3000; img-src * data: ''unsafe-inline''; style-src * data: ''unsafe-inline'';'
+            Content-Type:
+                - application/json
+            Date:
+                - Wed, 26 Aug 2026 01:13:40 GMT
+            Expires:
+                - "0"
+            Pragma:
+                - no-cache
+            Referrer-Policy:
+                - same-origin
+            Strict-Transport-Security:
+                - max-age=63072000; includeSubdomains; preload
+            Vary:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            X-Content-Type-Options:
+                - nosniff
+            X-Frame-Options:
+                - DENY
+            X-Xss-Protection:
+                - 1; mode=block
+        status: 404 Not Found
+        code: 404
+        duration: 123.202791ms

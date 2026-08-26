@@ -224,6 +224,57 @@ jobs:
     name: test_examples
     needs: compile_examples
     runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install Yarn
+        run: npm install -g "yarn@${YARN_VERSION}"
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install the Python build tools
+        run: python -m pip install 'build>=1.2' 'twine==6.1.0'
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Install the Pulumi CLI and pulumictl
+        run: |
+          curl -fsSL "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" | tar -xz -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/pulumi/pulumi" version | grep -qx "v${PULUMI_VERSION}"
+          echo "$RUNNER_TEMP/pulumi" >>"$GITHUB_PATH"
+          go install "github.com/pulumi/pulumictl/cmd/pulumictl@${PULUMICTL_VERSION}"
+      - name: Download the provider binary
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: provider.tar.gz
+      - name: Unpack the provider binary
+        run: |
+          mkdir -p bin
+          tar -xzf provider.tar.gz -C bin
+          rm provider.tar.gz
+          chmod +x "bin/$PROVIDER"
+          echo "${{ github.workspace }}/bin" >>"$GITHUB_PATH"
+      - name: Build the 4 SDKs
+        run: make sdk
+      # The recorded traffic answers every call, so this job reads no API key and no label holds
+      # it back. It runs on every pull request, a fork pull request included.
+      - name: Run the example programs against the recorded traffic
+        run: make test_examples
+
+  test_examples_live:
+    name: test_examples_live
+    needs: compile_examples
+    runs-on: ubuntu-latest
     # A pull request reaches the account only from this repository and only under the label. A
     # fork pull request runs the acceptance tests through /run-acceptance-tests instead.
     if: >-
@@ -272,12 +323,12 @@ jobs:
           echo "${{ github.workspace }}/bin" >>"$GITHUB_PATH"
       - name: Build the 4 SDKs
         run: make sdk
-      - name: Run the example programs
+      - name: Run the example programs against MailSlurp
         env:
           MAILSLURP_API_KEY: ${{ secrets.MAILSLURP_API_KEY }}
           # Empty until a release exists, and the upgrade test skips while it is.
           UPGRADE_BASELINE_VERSION: ${{ vars.UPGRADE_BASELINE_VERSION }}
-        run: make test_examples
+        run: make test_examples_live
 
   lint:
     name: lint
@@ -347,6 +398,47 @@ jobs:
     name: integration
     needs: unit
     runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install pulumictl
+        run: go install "github.com/pulumi/pulumictl/cmd/pulumictl@${PULUMICTL_VERSION}"
+      - name: Install actionlint
+        run: |
+          bin="$RUNNER_TEMP/actionlint-bin"
+          mkdir -p "$bin"
+          curl -fsSL -o "$bin/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $bin/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$bin/actionlint.tar.gz" -C "$bin" actionlint
+          echo "$bin" >>"$GITHUB_PATH"
+          "$bin/actionlint" --version
+      - name: List the tests that the integration tag adds
+        run: |
+          go test -tags=integration -list '.*' ./provider/... | grep '^Test' | sort >"$RUNNER_TEMP/tagged.txt"
+          go test -list '.*' ./provider/... | grep '^Test' | sort >"$RUNNER_TEMP/untagged.txt"
+          comm -13 "$RUNNER_TEMP/untagged.txt" "$RUNNER_TEMP/tagged.txt" >"$RUNNER_TEMP/integration-tests.txt"
+          if [ ! -s "$RUNNER_TEMP/integration-tests.txt" ]; then
+            echo "No file carries the integration build tag, so make test_integration passes without a vendor call. Add a tagged test."
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/integration-tests.txt"
+      # The recorded traffic answers every call, so this job reads no API key and no label holds
+      # it back. It runs on every pull request, a fork pull request included.
+      - name: Run the integration tests against the recorded traffic
+        shell: bash
+        run: make test_integration GOTEST='go test -v' | tee "$RUNNER_TEMP/integration.log"
+      - name: Confirm every integration test started
+        run: ./scripts/check-tests-ran.sh "$RUNNER_TEMP/integration-tests.txt" "$RUNNER_TEMP/integration.log" scripts/tests-allowed-to-skip.txt
+
+  integration_live:
+    name: integration_live
+    needs: unit
+    runs-on: ubuntu-latest
     # A pull request reaches the account only from this repository and only under the label. A
     # fork pull request runs the acceptance tests through /run-acceptance-tests instead.
     if: >-
@@ -382,11 +474,11 @@ jobs:
             exit 1
           fi
           cat "$RUNNER_TEMP/integration-tests.txt"
-      - name: Run the integration tests
+      - name: Run the integration tests against MailSlurp
         shell: bash
         env:
           MAILSLURP_API_KEY: ${{ secrets.MAILSLURP_API_KEY }}
-        run: make test_integration GOTEST='go test -v' | tee "$RUNNER_TEMP/integration.log"
+        run: make test_integration_live GOTEST='go test -v' | tee "$RUNNER_TEMP/integration.log"
       - name: Confirm every integration test started
         run: ./scripts/check-tests-ran.sh "$RUNNER_TEMP/integration-tests.txt" "$RUNNER_TEMP/integration.log" scripts/tests-allowed-to-skip.txt
 
@@ -399,9 +491,11 @@ jobs:
       - compile_examples
       - examples
       - test_examples
+      - test_examples_live
       - lint
       - unit
       - integration
+      - integration_live
     if: always()
     steps:
       - name: Confirm every job passed or skipped

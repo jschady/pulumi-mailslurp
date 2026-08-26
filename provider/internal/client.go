@@ -63,6 +63,17 @@ func NewClient(endpoint, apiKey string) (Client, error) {
 	return newClient(endpoint, apiKey)
 }
 
+// NewClientWith builds a client that sends every request through the given transport. A test
+// hands it a recorder, so a recorded run replays with no account.
+func NewClientWith(endpoint, apiKey string, transport http.RoundTripper) (Client, error) {
+	built, err := newClient(endpoint, apiKey)
+	if err != nil {
+		return nil, err
+	}
+	built.http.Transport = transport
+	return built, nil
+}
+
 func newClient(endpoint, apiKey string) (*client, error) {
 	base := strings.TrimRight(endpoint, "/")
 	if base == "" {
