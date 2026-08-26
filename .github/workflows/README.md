@@ -101,8 +101,9 @@ asks for the `id-token: write` permission. A human must register the trusted pub
 things: the branch comes from this repository, and the pull request carries the `run-live-tests`
 label.
 
-A pull request without the label skips both jobs. A pull request from a fork skips both jobs. Every
-pull request still gets these checks:
+A pull request without the label skips both jobs. A pull request from a fork skips both jobs. A push
+to `main` skips both jobs, and a manual run of `main.yml` runs them. Every pull request still gets
+these checks:
 
 - provider build
 - lint

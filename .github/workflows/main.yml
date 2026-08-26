@@ -275,7 +275,9 @@ jobs:
     name: test_examples_live
     needs: compile_examples
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # A push to main runs the replay job alone. The live job runs on a manual start of this
+    # workflow, which only a person with write access can make, so no fork reaches the account.
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7.0.1
@@ -434,7 +436,9 @@ jobs:
     name: integration_live
     needs: unit
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # A push to main runs the replay job alone. The live job runs on a manual start of this
+    # workflow, which only a person with write access can make, so no fork reaches the account.
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7.0.1

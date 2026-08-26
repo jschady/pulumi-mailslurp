@@ -238,6 +238,20 @@ for job in test_examples_live integration_live; do
 	check "pull-request.yml job $job waits for the run-live-tests label" $?
 done
 
+# A push to main runs the replay jobs alone. The live jobs of main.yml run on a manual start only.
+dispatch_gate="github.event_name == 'workflow_dispatch'"
+push_clause="github.event_name != 'pull_request'"
+for job in test_examples_live integration_live; do
+	body="$(job_body "$WF/main.yml" "$job")"
+	printf '%s\n' "$body" | grep -qF "$dispatch_gate"
+	check "main.yml job $job runs on a manual start only" $?
+	if printf '%s\n' "$body" | grep -qF "$push_clause"; then
+		fail "main.yml job $job runs on a push to main"
+	else
+		pass "main.yml job $job runs on no push"
+	fi
+done
+
 # A replay job runs on every pull request, a fork pull request included. It reads recorded traffic,
 # so a secret there buys nothing, and a gate there would hide the one run that proves the suite.
 for f in pull-request.yml main.yml; do
