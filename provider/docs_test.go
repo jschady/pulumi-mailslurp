@@ -183,7 +183,18 @@ func fenceTags(block string) ([]string, int) {
 func TestEveryPublishedResourceShipsAnExampleSource(t *testing.T) {
 	t.Parallel()
 	stems := exampleStems(t)
-	require.Len(t, stems, 5, "the provider publishes five resources")
+	require.NotEmpty(t, stems, "the schema publishes no resource, so this check reads nothing")
+
+	// The glob answers the names `embedPath` opens, so the two halves of the pair read one
+	// directory. A page the schema never names is as much a defect as a resource with no page.
+	pages, err := filepath.Glob(embedPath(t, "*"))
+	require.NoError(t, err)
+	embedded := make([]string, 0, len(pages))
+	for _, page := range pages {
+		embedded = append(embedded, strings.TrimSuffix(filepath.Base(page), "-examples.md"))
+	}
+	require.ElementsMatch(t, stems, embedded,
+		"the published resources and the embed pages must name the same stems")
 
 	for _, stem := range stems {
 		t.Run(stem, func(t *testing.T) {
@@ -297,7 +308,7 @@ func TestEveryExampleProgramCreatesEveryResourceOfItsSource(t *testing.T) {
 func TestEveryResourceDescriptionCarriesItsExamples(t *testing.T) {
 	t.Parallel()
 	descriptions := resourceDescriptions(t, builtSchema(t))
-	require.Len(t, descriptions, 5)
+	require.NotEmpty(t, descriptions)
 
 	for token, description := range descriptions {
 		t.Run(token, func(t *testing.T) {

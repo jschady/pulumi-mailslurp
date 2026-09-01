@@ -189,9 +189,9 @@ A path outside the 6 families can appear or disappear without the provider notic
 such a path in its log and stays green.
 
 When a watched path or component moved, the job opens a pull request instead of failing. The
-pull request runs `./scripts/pin-spec.sh` over the live document, which copies it over
-`api/openapi.json` and rewrites the 2 constants in `provider/foundation_test.go` that describe it.
-The pull request body lists what moved. Read the client for each item, then merge.
+pull request runs `./scripts/pin-spec.sh` over the live document. The script copies the document
+over `api/openapi.json` and prints the path count and the version it pinned. The pull request body
+lists what moved. Read the client for each item, then merge.
 
 The job pushes to the `bot/spec-update` branch and opens one pull request for it. A later run with
 the same branch open rewrites the branch and the body. GitHub starts no checks on a pull request that

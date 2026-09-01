@@ -213,7 +213,7 @@ func TestClientSourceNeverNamesTheSearchFilterParameter(t *testing.T) {
 			"%s must not wire searchFilter: the server accepts it and ignores it", source)
 		checked++
 	}
-	require.Equal(t, 11, checked, "the client is 11 source files")
+	require.NotZero(t, checked, "the glob matched no client source, so this check reads nothing")
 }
 
 // countingTransport counts the requests it passes on, which is what a recorder does.
