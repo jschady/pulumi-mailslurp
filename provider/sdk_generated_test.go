@@ -159,34 +159,72 @@ func TestTheCommittedSDKSourcesCarryNoBuildVersion(t *testing.T) {
 	}
 }
 
-// selfReference is how one generated file spells the `groups` property of the one type in this
-// schema that holds a list of itself.
-type selfReference struct{ path, property string }
+// selfReference is the file of one SDK and the pattern that file writes for the property that
+// holds a list of its own type.
+type selfReference struct{ path, pattern string }
 
-// recursiveType answers that property in each language. A generator that cannot express the
+// selfReferentialType answers the one type of the committed schema whose property is an array of
+// that same type, with the name of that property. The name carries no namespace.
+func selfReferentialType(t *testing.T) (string, string) {
+	t.Helper()
+	var doc struct {
+		Types map[string]struct {
+			Properties map[string]struct {
+				Type  string `json:"type"`
+				Items struct {
+					Ref string `json:"$ref"`
+				} `json:"items"`
+			} `json:"properties"`
+		} `json:"types"`
+	}
+	require.NoError(t, json.Unmarshal(committedSchema(t), &doc))
+	require.NotEmpty(t, doc.Types, "the committed schema declares no type")
+
+	var names, properties []string
+	for token, declared := range doc.Types {
+		for property, field := range declared.Properties {
+			if field.Type != "array" || field.Items.Ref != "#/types/"+token {
+				continue
+			}
+			names = append(names, token[strings.LastIndex(token, ":")+1:])
+			properties = append(properties, property)
+		}
+	}
+	require.Lenf(t, names, 1,
+		"the committed schema declares %d types that hold a list of themselves", len(names))
+	return names[0], properties[0]
+}
+
+// recursiveType answers the pattern each generator writes for that property. Each pattern carries
+// the conventions of its language and no name of this schema. A generator that cannot express the
 // cycle drops the property or emits a type that does not compile.
-func recursiveType() []selfReference {
+func recursiveType(t *testing.T) []selfReference {
+	t.Helper()
+	name, property := selfReferentialType(t)
+	// The generators spell one property 3 ways: the schema name, the Pascal case of it, and the
+	// snake case of it.
+	pascal := strings.ToUpper(property[:1]) + property[1:]
+	snake := strings.ToLower(regexp.MustCompile(`([a-z0-9])([A-Z])`).ReplaceAllString(property, "${1}_${2}"))
+
 	return []selfReference{
-		{"sdk/nodejs/types/input.ts",
-			"groups?: pulumi.Input<pulumi.Input<inputs.InboxForwarderMatchGroupArgs>[]"},
-		{"sdk/python/pulumi_mailslurp/_inputs.py",
-			"groups: pulumi.Input[Optional[Sequence[pulumi.Input['InboxForwarderMatchGroupArgs']]]]"},
-		{"sdk/dotnet/Inputs/InboxForwarderMatchGroupArgs.cs",
-			"InputList<Inputs.InboxForwarderMatchGroupArgs> Groups"},
-		{"sdk/go/mailslurp/pulumiTypes.go",
-			"Groups []InboxForwarderMatchGroup `pulumi:\"groups\"`"},
+		{"sdk/nodejs/types/input.ts", property + `\??:\s*pulumi\.Input<[^\n]*` + name + `Args`},
+		// The Python generator quotes a forward reference. The closing quote holds the pattern to
+		// the `Args` class, because the `ArgsDict` beside it declares the same property.
+		{filepath.Join(pythonPackage, "_inputs.py"), snake + `:\s*[^\n]*` + name + `Args['"]`},
+		{"sdk/dotnet/Inputs/" + name + "Args.cs", `InputList<Inputs\.` + name + `Args>\s+` + pascal},
+		{"sdk/go/mailslurp/pulumiTypes.go", pascal + `\s+\[\]` + name + `\b`},
 	}
 }
 
-// TestTheRecursiveTypeReachesEveryLanguage reads the self-reference out of each SDK. The
-// schema declares `groups` as an array of the type that holds it.
+// TestTheRecursiveTypeReachesEveryLanguage reads the self-reference out of each SDK. The committed
+// schema declares one property as an array of the type that holds it.
 func TestTheRecursiveTypeReachesEveryLanguage(t *testing.T) {
 	t.Parallel()
-	for _, found := range recursiveType() {
+	for _, found := range recursiveType(t) {
 		t.Run(filepath.Base(found.path), func(t *testing.T) {
 			t.Parallel()
-			assert.Contains(t, string(readRepoBytes(t, found.path)), found.property,
-				"%s declares a match group that does not hold match groups", found.path)
+			assert.Regexp(t, found.pattern, string(readRepoBytes(t, found.path)),
+				"%s declares a type that does not hold a list of itself", found.path)
 		})
 	}
 }
@@ -270,6 +308,20 @@ func TestTheGenerationRecipesCarryNoAccessToken(t *testing.T) {
 		"a generation left credentials in the plugin home")
 }
 
+// rootGoModLine answers the one line of the root go.mod that opens with prefix. The recipe that
+// rebuilds the SDK module file reads its versions from there, so the root is the source.
+func rootGoModLine(t *testing.T, prefix string) string {
+	t.Helper()
+	var found []string
+	for _, line := range strings.Split(string(readRepoBytes(t, "go.mod")), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			found = append(found, strings.TrimSpace(line))
+		}
+	}
+	require.Lenf(t, found, 1, "go.mod carries %d lines opening with %q", len(found), prefix)
+	return found[0]
+}
+
 // The generator writes no go.mod, and the SDK is a module of its own so the provider's tests do
 // not compile it. The recipe rebuilds the file with versions read from the provider.
 func TestTheGoGenerationRebuildsTheModuleFile(t *testing.T) {
@@ -279,10 +331,11 @@ func TestTheGoGenerationRebuildsTheModuleFile(t *testing.T) {
 		"make generate_go leaves the Go SDK without its module path: %s", recipe)
 
 	module := string(readRepoBytes(t, goModulePath))
-	root := string(readRepoBytes(t, "go.mod"))
-	for _, line := range []string{goDirective, "github.com/pulumi/pulumi/sdk/v3 v3.258.0"} {
+	for _, line := range []string{
+		rootGoModLine(t, "go "),
+		rootGoModLine(t, "github.com/pulumi/pulumi/sdk/v3 "),
+	} {
 		assert.Contains(t, module, line, "%s and the provider disagree about %q", goModulePath, line)
-		assert.Contains(t, root, line, "go.mod no longer pins %q", line)
 	}
 }
 

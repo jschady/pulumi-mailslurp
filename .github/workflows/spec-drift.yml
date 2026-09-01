@@ -112,7 +112,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
-          git add api/openapi.json provider/foundation_test.go
+          git add api/openapi.json
           git commit -m "Pin the MailSlurp spec of $(date -u +%Y-%m-%d)"
           git push --force origin "$BRANCH"
           {

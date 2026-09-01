@@ -66,7 +66,7 @@ func TestTheCompleteProgramNamesEveryItemOfTheSchema(t *testing.T) {
 	t.Parallel()
 	program := readProgram(t, filepath.Join(completeSource, "Pulumi.yaml"))
 	items := schemaItems(t)
-	require.Len(t, items, 7, "the provider ships five resources and two functions")
+	require.NotEmpty(t, items, "the committed schema declares no resource and no function")
 
 	for _, token := range items {
 		assert.Containsf(t, program, token, "the complete program should name %s", token)

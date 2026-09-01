@@ -3,8 +3,13 @@ package provider
 import (
 	"bytes"
 	"encoding/binary"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,17 +59,79 @@ func TestTheDotnetIconSourceIsARealRaster(t *testing.T) {
 		"%s carries no alpha channel, so the rounded corners come out opaque", logoRasterPath)
 }
 
+// svgFills answers every colour the vector fills a shape with, lower-cased and deduplicated. The
+// vector is the drawing this repository authored, so it is the oracle for the raster.
+func svgFills(t *testing.T, svg []byte) []string {
+	t.Helper()
+	matches := regexp.MustCompile(`fill="(#[0-9a-fA-F]{6})"`).FindAllSubmatch(svg, -1)
+	require.NotEmpty(t, matches, "%s fills no shape with a colour", logoSourcePath)
+
+	seen := map[string]bool{}
+	fills := make([]string, 0, len(matches))
+	for _, match := range matches {
+		colour := strings.ToLower(string(match[1]))
+		if seen[colour] {
+			continue
+		}
+		seen[colour] = true
+		fills = append(fills, colour)
+	}
+	return fills
+}
+
+// svgViewBox answers the width and the height of the coordinate space the vector draws in. The
+// first two numbers of the attribute are the origin, and the drawing does not depend on them.
+func svgViewBox(t *testing.T, svg []byte) (int, int) {
+	t.Helper()
+	pattern := regexp.MustCompile(`viewBox="\s*[\d.-]+\s+[\d.-]+\s+([1-9][0-9]*)\s+([1-9][0-9]*)\s*"`)
+	match := pattern.FindSubmatch(svg)
+	require.NotNil(t, match, "%s declares no view box with a width and a height", logoSourcePath)
+
+	width, err := strconv.Atoi(string(match[1]))
+	require.NoError(t, err)
+	height, err := strconv.Atoi(string(match[2]))
+	require.NoError(t, err)
+	return width, height
+}
+
+// pngHasColour answers whether the raster draws one fully opaque pixel of the colour, written as
+// `#rrggbb`. The comparison is exact. A measurement of the two files shows that every fill of
+// docs/logo.svg covers a flat area of docs/logo.png, so the blended edges the rasteriser draws
+// around that area need no tolerance.
+func pngHasColour(img image.Image, rgb string) bool {
+	value, err := strconv.ParseUint(strings.TrimPrefix(rgb, "#"), 16, 32)
+	if err != nil {
+		return false
+	}
+	wantR, wantG, wantB := uint32(value>>16)&0xff, uint32(value>>8)&0xff, uint32(value)&0xff
+
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			if a>>8 == 0xff && r>>8 == wantR && g>>8 == wantG && b>>8 == wantB {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // The raster and the vector are one mark drawn twice. A raster of somebody else's artwork would
 // ship on NuGet while the registry page showed this one.
 func TestTheRasterAndTheVectorDrawTheSameMark(t *testing.T) {
 	t.Parallel()
-	vector := string(readRepoBytes(t, logoSourcePath))
-	for _, colour := range []string{"#232a3d", "#ffffff", "#f2994a"} {
-		require.Contains(t, vector, colour, "%s no longer uses %s", logoSourcePath, colour)
-	}
+	vector := readRepoBytes(t, logoSourcePath)
+	boxWidth, boxHeight := svgViewBox(t, vector)
+	assert.Equal(t, boxWidth, boxHeight, "%s draws in a view box that is not square", logoSourcePath)
 
-	raster := readRepoBytes(t, logoRasterPath)
-	width, _, _ := pngHeader(t, raster)
-	require.Contains(t, vector, `viewBox="0 0 64 64"`, "%s changed its coordinate space", logoSourcePath)
-	assert.Zero(t, width%64, "%s is not a whole multiple of the %s view box", logoRasterPath, logoSourcePath)
+	raster, err := png.Decode(bytes.NewReader(readRepoBytes(t, logoRasterPath)))
+	require.NoError(t, err, "decode %s", logoRasterPath)
+	assert.Zero(t, raster.Bounds().Dx()%boxWidth,
+		"%s is not a whole multiple of the %s view box", logoRasterPath, logoSourcePath)
+
+	for _, colour := range svgFills(t, vector) {
+		assert.True(t, pngHasColour(raster, colour),
+			"%s draws no pixel of %s, which %s fills a shape with", logoRasterPath, colour, logoSourcePath)
+	}
 }

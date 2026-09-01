@@ -35,9 +35,6 @@ var domainRecordProperties = []string{
 	"alternativeRecordEntries",
 }
 
-// The verbatim domainType values of the API. The inbox type spells the second one SMTP_INBOX.
-var domainTypeValues = []string{"HTTP_INBOX", "SMTP_DOMAIN"}
-
 // fnObject is a schema object type: a function input, a function output, or a named type.
 type fnObject struct {
 	Description string                     `json:"description"`
@@ -214,9 +211,11 @@ func TestTheDomainNameRecordTypeCarriesTheSevenProperties(t *testing.T) {
 }
 
 // `inboxType` and `domainType` never share a Go type, because the API spells the second
-// value differently for the two concepts.
+// value differently for the two concepts. The values come from the pinned API spec at test time,
+// so a vendor value the spec grows fails here instead of reaching a stack outside the enum.
 func TestTheDomainTypeEnumNeverSharesTheInboxTypeValues(t *testing.T) {
 	t.Parallel()
+	want := specEnumValues(t, "DomainDto", "domainType")
 	schema := getSchema(t)
 
 	domainType := schema.Types[domainTypeEnum]
@@ -227,10 +226,10 @@ func TestTheDomainTypeEnumNeverSharesTheInboxTypeValues(t *testing.T) {
 	for _, v := range domainType.Enum {
 		got[v.Value] = v.Description
 	}
-	assert.Len(t, got, 2)
-	for _, want := range domainTypeValues {
-		assert.Contains(t, got, want)
-		assert.NotEmpty(t, got[want], "enum value %q has no description", want)
+	assert.Len(t, got, len(want), "the enum and the pinned spec carry a different number of values")
+	for _, value := range want {
+		assert.Contains(t, got, value)
+		assert.NotEmpty(t, got[value], "enum value %q has no description", value)
 	}
 	assert.NotContains(t, got, "SMTP_INBOX", "SMTP_INBOX belongs to the inbox type, not the domain type")
 }

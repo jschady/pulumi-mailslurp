@@ -117,7 +117,7 @@ func TestGetDomainReadsTheDomainsTheAccountAlreadyHolds(t *testing.T) {
 
 		assert.Equal(t, summary.ID, result.Get(domainIDProperty).AsString())
 		assert.Equal(t, summary.Domain, result.Get("domain").AsString())
-		assert.Contains(t, domainTypeValues, result.Get("domainType").AsString())
+		assert.Contains(t, specEnumValues(t, "DomainDto", "domainType"), result.Get("domainType").AsString())
 		assert.NotEmpty(t, result.Get("verificationToken").AsString())
 		assert.NotEmpty(t, result.Get("dkimTokens").AsArray().AsSlice())
 		assert.NotEmpty(t, result.Get("createdAt").AsString())
